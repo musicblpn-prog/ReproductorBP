@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mi Music</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div>
+          <h1>Mi Music</h1>
+          <p>Biblioteca personal</p>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button id="btnAdd" class="btn primary" type="button">Agregar</button>
+      </div>
+    </header>
+
+    <main class="layout">
+
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="search">
+          <input id="searchInput" type="search" placeholder="Buscar canción, artista, álbum…" />
+        </div>
+
+        <div class="nav">
+          <button id="navGenres" class="nav-btn active" type="button">Géneros</button>
+          <button id="navAlbums" class="nav-btn" type="button">Álbumes</button>
+          <button id="navSongs" class="nav-btn" type="button">Canciones</button>
+          <button id="navCollections" class="nav-btn" type="button">Colecciones</button>  
+        </div>
+
+        
+ 
+
+
+        <div class="hint">
+          Consejo: en Drive usa enlaces directos “uc?export=download&id=…”
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <section class="content">
+        <div class="crumbs" id="crumbs">
+          <span class="crumb strong">Géneros</span>
+        </div>
+
+        <div id="list" class="grid"></div>
+
+        <div id="empty" class="empty hidden">
+          <h2>Tu biblioteca está vacía</h2>
+          <p>Agrega tu primera canción desde Google Drive.</p>
+          <button id="btnAdd2" class="btn primary" type="button">Agregar canción</button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Player -->
+    <footer class="player">
+      <div class="np">
+        <div class="cover" id="cover">♪</div>
+        <div class="np-meta">
+          <div id="npTitle" class="np-title">Nada reproduciendo</div>
+          <div id="npSub" class="np-sub">—</div>
+        </div>
+      </div>
+
+      <div class="p-controls">
+        <button id="prevBtn" class="btn icon" type="button" title="Anterior">⏮</button>
+        <button id="playBtn" class="btn icon big" type="button" title="Play/Pause">▶</button>
+        <button id="nextBtn" class="btn icon" type="button" title="Siguiente">⏭</button>
+
+        <div class="timebar">
+          <span id="tCur" class="time">0:00</span>
+          <input id="seek" type="range" min="0" max="100" value="0" step="0.1" />
+          <span id="tDur" class="time">0:00</span>
+        </div>
+      </div>
+
+      <div class="p-right">
+        <div class="vol">
+          <span>🔊</span>
+          <input id="vol" type="range" min="0" max="1" value="0.9" step="0.01" />
+        </div>
+      </div>
+
+      <audio id="audio"></audio>
+    </footer>
+
+  </div>
+
+  <!-- Modal Add -->
+  <div id="modal" class="modal modal-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Agregar canción</h2>
+        <button id="closeModal" class="btn icon" type="button" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div class="form">
+        <label>
+          Nombre
+          <input id="inTitle" type="text" placeholder="Ej: Numb" maxlength="80" />
+        </label>
+
+        <label>
+          Artista
+          <input id="inArtist" type="text" placeholder="Ej: Linkin Park" maxlength="80" />
+        </label>
+
+        <label>
+          Género
+          <input id="inGenre" type="text" placeholder="Ej: Rock" maxlength="40" />
+        </label>
+
+        <label>
+          Álbum
+          <input id="inAlbum" type="text" placeholder="Ej: Meteora" maxlength="60" />
+        </label>
+
+        <label>
+          Link MP3 (Drive directo)
+          <input id="inUrl" type="url" placeholder="https://drive.google.com/uc?export=download&id=..." />
+          <small class="small">Tip: pega un link “view” y te lo convierto automáticamente.</small>
+        </label>
+
+        <label>
+          Portada (opcional, URL imagen)
+          <input id="inCover" type="url" placeholder="https://.../cover.jpg" />
+        </label>
+
+        <div class="form-actions">
+          <button id="saveSong" class="btn primary" type="button">Guardar</button>
+          <button id="cancelSong" class="btn" type="button">Cancelar</button>
+        </div>
+
+        <div id="msg" class="msg hidden"></div>
+      </div>
+    </div>
+  </div>
+
+<div id="nowPlaying" class="now-playing np-hidden">
+  <div class="np-header">
+    <button id="closeNowPlaying">⬇</button>
+    <span>Reproduciendo</span>
+  </div>
+
+  <div class="np-body">
+    <div id="bigCover" class="big-cover">♪</div>
+
+    <h2 id="bigTitle">Título</h2>
+    <p id="bigArtist">Artista</p>
+
+    <div class="np-controls">
+     <button id="shuffleFull" class="circle-btn" type="button">🔀</button>
+     <button id="prevFull" class="circle-btn" type="button">⏮</button>
+     <button id="playFull" class="circle-btn main-btn" type="button">▶</button>
+     <button id="nextFull" class="circle-btn" type="button">⏭</button>
+     <button id="repeatFull" class="circle-btn" type="button">🔁</button>
+    </div>
+
+    <input id="seekFull" type="range" min="0" max="100" value="0" />
+
+    <div class="np-extra">
+      <button id="favFullBtn" class="circle-btn">🤍</button>
+
+      <select id="speedControl">
+        <option value="1">1x</option>
+        <option value="1.5">1.5x</option>
+        <option value="2">2x</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>

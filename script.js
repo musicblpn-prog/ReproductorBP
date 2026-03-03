@@ -381,20 +381,38 @@ function render() {
     return;
   }
 
+
+  if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
+
+  let tracks = favoriteTracks();
+
+  if (q) tracks = tracks.filter(t => matchTrack(t, q));
+
+  tracks.sort((a,b)=> (a.artist+a.album+a.title).localeCompare(b.artist+b.album+b.title));
+
+  queue = tracks;
+
+  tracks.forEach((t, idx) => listEl.appendChild(songRow(t, idx)));
+
+  return;
+}
+
+
+
 if (view === "collections") {
 
-  const collections = Object.keys(library.collections);
+  // 1) nombres de colecciones personalizadas (playlists)
+  const names = Object.keys(library.collections || {});
 
-  collections.forEach(name => {
+  // 2) forzar "Favoritos" siempre visible
+  if (!names.includes("Favoritos")) names.unshift("Favoritos");
 
-    let count = 0;
+  names.forEach(name => {
 
-    if (name === "Favoritos") {
-      count = favoriteTracks().length;
-    } else {
-      const trackIds = library.collections[name] || [];
-      count = trackIds.length;
-    }
+    // Favoritos: conteo inteligente
+    const count = (name === "Favoritos")
+      ? favoriteTracks().length
+      : (library.collections[name] || []).length;
 
     listEl.appendChild(card({
       title: name,
@@ -797,17 +815,18 @@ function deleteAlbum(genreName, albumName) {
 // --------- Player ----------
 async function playFromQueue(index) {
 
-  queue = buildQueueForCurrentView();  // 🔥 FORZAMOS QUEUE ACTUAL
+  queue = buildQueueForCurrentView();
 
   if (index < 0 || index >= queue.length) return;
 
   currentIndex = index;
   const t = queue[currentIndex];
 
+  // 🔥 ORDEN CORRECTO
   audio.src = t.url;
-  
-  updateNowPlayingUI(t);
+  audio.load();
 
+  updateNowPlayingUI(t);
 
   if ("mediaSession" in navigator) {
     try {
@@ -820,10 +839,19 @@ async function playFromQueue(index) {
           : []
       });
 
-      navigator.mediaSession.setActionHandler("play", () => audio.play());
-      navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+      navigator.mediaSession.setActionHandler("play", () => resume());
+      navigator.mediaSession.setActionHandler("pause", () => pause());
       navigator.mediaSession.setActionHandler("previoustrack", () => prevBtn.click());
       navigator.mediaSession.setActionHandler("nexttrack", () => nextBtn.click());
+
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (details.fastSeek && "fastSeek" in audio) {
+          audio.fastSeek(details.seekTime);
+        } else {
+          audio.currentTime = details.seekTime;
+        }
+      });
+
     } catch (e) {
       console.log("MediaSession error:", e);
     }
@@ -833,14 +861,19 @@ async function playFromQueue(index) {
     await audio.play();
     isPlaying = true;
     playBtn.textContent = "⏸";
-  } catch (err) {
-    console.log("Audio play error:", err);
-    isPlaying = false;
-    playBtn.textContent = "▶";
+    if (playFull) playFull.textContent = "⏸";
+  } catch {
+    const once = () => {
+      audio.removeEventListener("canplay", once);
+      audio.play().catch(()=>{});
+    };
+    audio.addEventListener("canplay", once);
   }
 
-  render();
+  // 🚫 NO render() aquí
 }
+
+
 
 
 function updateNowPlayingUI(t) {
@@ -1006,7 +1039,17 @@ if (favFullBtn) {
     if (currentIndex < 0) return;
 
     const t = queue[currentIndex];
+
     toggleFavorite(t);
+
+    // 🔥 actualizar visual inmediatamente
+    if (favorites.has(t.id)) {
+      favFullBtn.classList.add("active");
+      favFullBtn.textContent = "❤️";
+    } else {
+      favFullBtn.classList.remove("active");
+      favFullBtn.textContent = "🤍";
+    }
 
   });
 }
@@ -1018,13 +1061,21 @@ seekFull.addEventListener("input", () => {
 });
 
 audio.addEventListener("timeupdate", () => {
+
   if (audio.duration) {
     seekFull.value = (audio.currentTime / audio.duration) * 100;
+    seek.value = (audio.currentTime / audio.duration) * 100;
   }
-});
 
-speedControl.addEventListener("change", () => {
-  audio.playbackRate = parseFloat(speedControl.value);
+  if ("mediaSession" in navigator && navigator.mediaSession.setPositionState) {
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: audio.duration || 0,
+        playbackRate: audio.playbackRate || 1,
+        position: audio.currentTime || 0,
+      });
+    } catch {}
+  }
 });
 
 

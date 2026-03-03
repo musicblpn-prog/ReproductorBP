@@ -888,3 +888,28 @@ input{
 }
 
 
+
+.album-card .row{
+  align-items: flex-start;
+}
+
+.album-card .card-title{
+  text-align: left;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.album-card .card-sub{
+  text-align: left;
+  opacity: .85;
+}
+
+@media (max-width: 520px){
+  .album-card{
+    padding: 14px !important;
+  }
+  .album-card .pill{
+    flex: 0 0 auto;
+    margin-left: 10px;
+  }
+}

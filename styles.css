@@ -634,10 +634,16 @@ input{
   /* títulos y subtítulos alineados y sin “tirarse” */
   .card-title {
     font-size: 20px !important;
-    line-height: 1.15 !important;
+   /* line-height: 1.15 !important; */
     text-align: left !important;
     margin: 0 0 6px 0 !important;
     word-break: break-word;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.2;
+
+
+
   }
 
   .card-sub {
@@ -897,7 +903,9 @@ input{
   text-align: left;
   line-height: 1.15;
   word-break: break-word;
+  align-items: flex-start;
 }
+
 
 .album-card .card-sub{
   text-align: left;

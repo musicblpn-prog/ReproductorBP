@@ -62,8 +62,11 @@ const speedControl = document.getElementById("speedControl");
 const favFullBtn = document.getElementById("favFullBtn");
 const shuffleBtn = document.getElementById("shuffleBtn");
 const repeatBtn = document.getElementById("repeatBtn");
+const audioPreload = new Audio();
+audioPreload.preload = "auto";
 
-
+audio.addEventListener("play", updatePlayButtons);
+audio.addEventListener("pause", updatePlayButtons);
 
 
 
@@ -90,6 +93,8 @@ let shufflePos = 0;
 
 // --------- Init ----------
 audio.volume = Number(vol.value);
+audio.preload = "auto";
+audio.crossOrigin = "anonymous";
 render();
 
 
@@ -126,6 +131,35 @@ if (repeatFull) {
 
 let favorites = loadFavorites(); // Set(trackId)
 
+function preloadNextTrack(){
+
+  if(!queue.length) return;
+
+  let nextIndex;
+
+  if(isShuffle){
+    nextIndex = Math.floor(Math.random() * queue.length);
+  } else {
+    nextIndex = currentIndex + 1;
+    if(nextIndex >= queue.length) nextIndex = 0;
+  }
+
+  const nextTrack = queue[nextIndex];
+  if(!nextTrack) return;
+
+  audioPreload.src = fixDropbox(nextTrack.url);
+}
+
+function fixDropbox(url){
+
+  if(!url.includes("dropbox.com")) return url;
+
+  return url
+    .replace("www.dropbox.com","dl.dropboxusercontent.com")
+    .replace("&raw=1","")
+    .replace(/&st=[^&]+/,"");
+}
+
 function loadFavorites(){
   try{
     const raw = localStorage.getItem(LS_FAV);
@@ -148,11 +182,14 @@ function resetShuffle(){
 }
 
 function makeShuffleOrder(n){
+
   const arr = [...Array(n).keys()];
+
   for(let i = arr.length - 1; i > 0; i--){
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
+
   return arr;
 }
 //
@@ -266,6 +303,22 @@ function fmtTime(sec) {
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+
+function updatePlayButtons() {
+
+  if (audio.paused) {
+    playBtn.textContent = "▶";
+    if (playFull) playFull.textContent = "▶";
+  } else {
+    playBtn.textContent = "⏸";
+    if (playFull) playFull.textContent = "⏸";
+  }
+
+}
+
+
+
 
 function normalize(str) {
   return (str ?? "").toString().trim();
@@ -823,7 +876,8 @@ async function playFromQueue(index) {
   const t = queue[currentIndex];
 
   // 🔥 ORDEN CORRECTO
-  audio.src = t.url;
+ audio.src = fixDropbox(t.url);
+ preloadNextTrack();
   audio.load();
 
   updateNowPlayingUI(t);
@@ -860,7 +914,7 @@ async function playFromQueue(index) {
   try {
     await audio.play();
     isPlaying = true;
-    playBtn.textContent = "⏸";
+    updatePlayButtons();
     if (playFull) playFull.textContent = "⏸";
   } catch {
     const once = () => {
@@ -958,19 +1012,28 @@ if (favFullBtn) {
 function pause() {
   audio.pause();
   isPlaying = false;
-  playBtn.textContent = "▶";
+  updatePlayButtons();
   if (playFull) playFull.textContent = "▶";
+
+  if ("mediaSession" in navigator) {
+  navigator.mediaSession.playbackState = "paused";
+}
 }
 
 async function resume() {
   try {
     await audio.play();
     isPlaying = true;
-    playBtn.textContent = "⏸";
+    updatePlayButtons();
     if (playFull) playFull.textContent = "⏸";
   } catch {
     isPlaying = false;
   }
+
+  if ("mediaSession" in navigator) {
+  navigator.mediaSession.playbackState = "playing";
+}
+
 }
 
 // --------- Events ----------
@@ -1085,15 +1148,23 @@ prevBtn.onclick = () => {
   queue = buildQueueForCurrentView();
   if (!queue.length) return;
 
-  if (isShuffle) {
-    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
-      shuffleOrder = makeShuffleOrder(queue.length);
-      shufflePos = 0;
-    }
-    shufflePos = Math.max(0, shufflePos - 1);
-    playFromQueue(shuffleOrder[shufflePos]);
-    return;
+ if (isShuffle) {
+
+  if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
+    shuffleOrder = makeShuffleOrder(queue.length);
+    shufflePos = 0;
   }
+
+  shufflePos++;
+
+  if (shufflePos >= shuffleOrder.length) {
+    shuffleOrder = makeShuffleOrder(queue.length);
+    shufflePos = 0;
+  }
+
+  playFromQueue(shuffleOrder[shufflePos]);
+  return;
+}
 
   const next = currentIndex <= 0 ? 0 : currentIndex - 1;
   playFromQueue(next);
@@ -1140,36 +1211,31 @@ seek.addEventListener("input", () => {
   audio.currentTime = (Number(seek.value) / 100) * audio.duration;
 });
 
-audio.addEventListener("ended", () => {
+audio.addEventListener("ended", async () => {
 
   if (!queue.length) return;
 
-  // 🔁 Repetir una sola canción
-  if (repeatMode === "one") {
-    playFromQueue(currentIndex);
-    return;
-  }
-
   let next;
 
-  // 🔀 Si shuffle está activo
-  if (isShuffle) {
+  if (repeatMode === "one") {
+    next = currentIndex;
+  }
+  else if (isShuffle) {
     next = Math.floor(Math.random() * queue.length);
-  } 
+  }
   else {
-    // Normal secuencial
-    next = currentIndex >= queue.length - 1
-      ? 0
-      : currentIndex + 1;
+    next = currentIndex + 1;
+    if (next >= queue.length) {
+      if (repeatMode === "all") next = 0;
+      else {
+        pause();
+        return;
+      }
+    }
   }
 
-  // 🚫 Si repeat está apagado y estamos en la última
-  if (repeatMode === "off" && currentIndex >= queue.length - 1 && !isShuffle) {
-    pause();
-    return;
-  }
+  await playFromQueue(next);
 
-  playFromQueue(next);
 });
 
 vol.addEventListener("input", () => {

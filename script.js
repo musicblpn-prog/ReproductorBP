@@ -91,6 +91,52 @@ let previousView = null;
 let shuffleOrder = [];  // array de índices
 let shufflePos = 0;
 
+let pausedBySystem = false;
+
+audio.addEventListener("pause", () => {
+
+  if (!audio.ended && !document.hidden) {
+    pausedBySystem = true;
+  }
+
+});
+
+
+document.addEventListener("visibilitychange", () => {
+
+  if (!document.hidden && pausedBySystem) {
+
+    pausedBySystem = false;
+
+    audio.play().catch(()=>{});
+
+  }
+
+});
+
+audio.addEventListener("pause", () => {
+
+  // si la pausa fue por otra app
+  if (!audio.ended) {
+
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "paused";
+    }
+
+  }
+
+});
+
+audio.addEventListener("playing", () => {
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+  }
+
+});
+
+
+
 // --------- Init ----------
 audio.volume = Number(vol.value);
 audio.preload = "auto";
@@ -876,8 +922,8 @@ async function playFromQueue(index) {
   const t = queue[currentIndex];
 
   // 🔥 ORDEN CORRECTO
- audio.src = fixDropbox(t.url);
- preloadNextTrack();
+  audio.src = fixDropbox(t.url);
+  preloadNextTrack();
   audio.load();
 
   updateNowPlayingUI(t);
@@ -897,7 +943,6 @@ async function playFromQueue(index) {
       navigator.mediaSession.setActionHandler("pause", () => pause());
       navigator.mediaSession.setActionHandler("previoustrack", () => prevBtn.click());
       navigator.mediaSession.setActionHandler("nexttrack", () => nextBtn.click());
-
       navigator.mediaSession.setActionHandler("seekto", (details) => {
         if (details.fastSeek && "fastSeek" in audio) {
           audio.fastSeek(details.seekTime);
@@ -906,12 +951,30 @@ async function playFromQueue(index) {
         }
       });
 
+audio.addEventListener("playing", () => {
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+  }
+
+});
+
+audio.addEventListener("pause", () => {
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "paused";
+  }
+
+});
+
+
+
     } catch (e) {
       console.log("MediaSession error:", e);
     }
   }
 
-  try {
+  /*try {
     await audio.play();
     isPlaying = true;
     updatePlayButtons();
@@ -922,7 +985,31 @@ async function playFromQueue(index) {
       audio.play().catch(()=>{});
     };
     audio.addEventListener("canplay", once);
-  }
+  }*/
+
+
+    try {
+
+  await audio.play();
+    isPlaying = true;
+    updatePlayButtons();
+    if (playFull) playFull.textContent = "⏸";
+} catch (err) {
+
+  // iPhone a veces necesita esperar a que cargue
+  const once = () => {
+    audio.removeEventListener("canplay", once);
+    audio.play().catch(()=>{});
+  };
+
+  audio.addEventListener("canplay", once);
+
+}
+
+
+
+
+
 
   // 🚫 NO render() aquí
 }
@@ -1211,7 +1298,7 @@ seek.addEventListener("input", () => {
   audio.currentTime = (Number(seek.value) / 100) * audio.duration;
 });
 
-audio.addEventListener("ended", async () => {
+/*audio.addEventListener("ended", async () => {
 
   if (!queue.length) return;
 
@@ -1235,6 +1322,60 @@ audio.addEventListener("ended", async () => {
   }
 
   await playFromQueue(next);
+
+});*/
+
+audio.addEventListener("ended", () => {
+
+  if (!queue.length) return;
+
+  // repetir una canción
+  if (repeatMode === "one") {
+    playFromQueue(currentIndex);
+    return;
+  }
+
+  // shuffle inteligente
+  if (isShuffle) {
+
+    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
+      shuffleOrder = makeShuffleOrder(queue.length);
+      shufflePos = 0;
+    }
+
+    shufflePos++;
+
+    if (shufflePos >= shuffleOrder.length) {
+
+      if (repeatMode === "all") {
+        shuffleOrder = makeShuffleOrder(queue.length);
+        shufflePos = 0;
+      } else {
+        pause();
+        return;
+      }
+
+    }
+
+    playFromQueue(shuffleOrder[shufflePos]);
+    return;
+
+  }
+
+  // modo normal
+  let next = currentIndex + 1;
+
+  if (next >= queue.length) {
+
+    if (repeatMode === "all") next = 0;
+    else {
+      pause();
+      return;
+    }
+
+  }
+
+  playFromQueue(next);
 
 });
 

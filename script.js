@@ -1138,7 +1138,7 @@ function pause() {
 }*/
 
 
-async function resume() {
+/*async function resume() {
 
   try {
 
@@ -1164,6 +1164,40 @@ async function resume() {
     console.log("Resume error:", err);
 
     // iOS a veces necesita esperar a que cargue
+    const once = () => {
+      audio.removeEventListener("canplay", once);
+      audio.play().catch(()=>{});
+    };
+
+    audio.addEventListener("canplay", once);
+
+  }
+
+}*/
+
+async function resume() {
+
+  try {
+
+    if (!audio.src) return;
+
+    // Si iPhone suspendió el audio
+    if (audio.readyState === 0) {
+      audio.load();
+    }
+
+    await audio.play();
+
+    isPlaying = true;
+
+    playBtn.textContent = "⏸";
+    if (playFull) playFull.textContent = "⏸";
+
+  } catch (err) {
+
+    console.log("Resume error:", err);
+
+    // Safari necesita esperar a que cargue
     const once = () => {
       audio.removeEventListener("canplay", once);
       audio.play().catch(()=>{});

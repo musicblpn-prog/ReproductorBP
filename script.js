@@ -74,99 +74,6 @@ audio.addEventListener("pause", updatePlayButtons);
 
 
 
-let wasPlayingBeforeInterruption = false;
-
-function updatePlayButtons() {
-  if (audio.paused) {
-    playBtn.textContent = "▶";
-    if (playFull) playFull.textContent = "▶";
-  } else {
-    playBtn.textContent = "⏸";
-    if (playFull) playFull.textContent = "⏸";
-  }
-}
-
-function syncPlaybackState() {
-  if ("mediaSession" in navigator) {
-    navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing";
-  }
-  updatePlayButtons();
-}
-
-function getPrevIndex() {
-  queue = buildQueueForCurrentView();
-  if (!queue.length) return -1;
-
-  if (isShuffle) {
-    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
-      shuffleOrder = makeShuffleOrder(queue.length);
-      shufflePos = 0;
-    }
-    shufflePos = Math.max(0, shufflePos - 1);
-    return shuffleOrder[shufflePos];
-  }
-
-  return currentIndex <= 0 ? 0 : currentIndex - 1;
-}
-
-function getNextIndex(fromEnded = false) {
-  queue = buildQueueForCurrentView();
-  if (!queue.length) return -1;
-
-  if (repeatMode === "one" && fromEnded) {
-    return currentIndex;
-  }
-
-  if (isShuffle) {
-    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
-      shuffleOrder = makeShuffleOrder(queue.length);
-      shufflePos = 0;
-
-      if (currentIndex >= 0) {
-        const pos = shuffleOrder.indexOf(currentIndex);
-        if (pos >= 0) shufflePos = pos;
-      }
-    }
-
-    shufflePos++;
-
-    if (shufflePos >= shuffleOrder.length) {
-      if (repeatMode === "all") {
-        shuffleOrder = makeShuffleOrder(queue.length);
-        shufflePos = 0;
-      } else {
-        return -1;
-      }
-    }
-
-    return shuffleOrder[shufflePos];
-  }
-
-  const next = currentIndex + 1;
-
-  if (next >= queue.length) {
-    return repeatMode === "all" ? 0 : -1;
-  }
-
-  return next;
-}
-
-async function goPrev() {
-  const idx = getPrevIndex();
-  if (idx < 0) return;
-  await playFromQueue(idx);
-}
-
-async function goNext(fromEnded = false) {
-  const idx = getNextIndex(fromEnded);
-  if (idx < 0) {
-    pause();
-    return;
-  }
-  await playFromQueue(idx);
-}
-
-
 
 
 // --------- State ----------
@@ -1019,7 +926,7 @@ function deleteAlbum(genreName, albumName) {
 
 
 // --------- Player ----------
-/*async function playFromQueue(index) {
+async function playFromQueue(index) {
 
   queue = buildQueueForCurrentView();
 
@@ -1095,7 +1002,7 @@ audio.addEventListener("pause", () => {
   }*/
 
 
-    /* {
+    try {
 
   await audio.play();
     isPlaying = true;
@@ -1119,58 +1026,7 @@ audio.addEventListener("pause", () => {
 
 
   // 🚫 NO render() aquí
-}*/
-
-
-
-async function playFromQueue(index) {
-  queue = buildQueueForCurrentView();
-
-  if (index < 0 || index >= queue.length) return;
-
-  currentIndex = index;
-  const t = queue[currentIndex];
-
-  audio.src = fixDropbox(t.url);
-  audio.load();
-
-  updateNowPlayingUI(t);
-
-  if ("mediaSession" in navigator) {
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: t.title,
-        artist: t.artist,
-        album: t.album,
-        artwork: t.cover
-          ? [{ src: t.cover, sizes: "512x512", type: "image/png" }]
-          : []
-      });
-
-      navigator.mediaSession.setActionHandler("play", () => resume(true));
-      navigator.mediaSession.setActionHandler("pause", () => pause());
-      navigator.mediaSession.setActionHandler("previoustrack", () => goPrev());
-      navigator.mediaSession.setActionHandler("nexttrack", () => goNext());
-
-      navigator.mediaSession.setActionHandler("seekto", (details) => {
-        if (details.fastSeek && "fastSeek" in audio) {
-          audio.fastSeek(details.seekTime);
-        } else {
-          audio.currentTime = details.seekTime;
-        }
-      });
-
-    } catch (e) {
-      console.log("MediaSession error:", e);
-    }
-  }
-
-  await resume(true);
-  preloadNextTrack();
 }
-
-
-
 
 
 
@@ -1254,7 +1110,7 @@ if (favFullBtn) {
 
 
 
-/*function pause() {
+function pause() {
   audio.pause();
   isPlaying = false;
   updatePlayButtons();
@@ -1263,16 +1119,7 @@ if (favFullBtn) {
   if ("mediaSession" in navigator) {
   navigator.mediaSession.playbackState = "paused";
 }
-
-}*/
-
-function pause() {
-  audio.pause();
-  isPlaying = false;
-  syncPlaybackState();
 }
-
-
 
 /*async function resume() {
   try {
@@ -1291,42 +1138,41 @@ function pause() {
 }*/
 
 
-async function resume(forceReload = false) {
+async function resume() {
+
   try {
-    if (!audio.src && currentIndex >= 0) {
-      queue = buildQueueForCurrentView();
-      const t = queue[currentIndex];
-      if (t) {
-        audio.src = fixDropbox(t.url);
-      }
-    }
 
-    if (!audio.src) return false;
+    if (!audio.src) return;
 
-    if (forceReload || audio.readyState < 2) {
+    // si el audio fue suspendido por iOS
+    if (audio.readyState === 0) {
       audio.load();
     }
 
     await audio.play();
+
     isPlaying = true;
-    syncPlaybackState();
-    return true;
+
+    updatePlayButtons();
+
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "playing";
+    }
 
   } catch (err) {
+
     console.log("Resume error:", err);
 
-    const once = async () => {
+    // iOS a veces necesita esperar a que cargue
+    const once = () => {
       audio.removeEventListener("canplay", once);
-      try {
-        await audio.play();
-        isPlaying = true;
-        syncPlaybackState();
-      } catch {}
+      audio.play().catch(()=>{});
     };
 
     audio.addEventListener("canplay", once);
-    return false;
+
   }
+
 }
 
 
@@ -1438,7 +1284,7 @@ audio.addEventListener("timeupdate", () => {
 
 
 
-/*prevBtn.onclick = () => {
+prevBtn.onclick = () => {
   queue = buildQueueForCurrentView();
   if (!queue.length) return;
 
@@ -1487,36 +1333,7 @@ nextBtn.onclick = () => {
 
   const next = currentIndex >= queue.length - 1 ? currentIndex : currentIndex + 1;
   playFromQueue(next);
-};*/
-
-
-prevBtn.onclick = () => goPrev();
-nextBtn.onclick = () => goNext();
-
-playBtn.onclick = () => {
-  if (audio.paused) resume();
-  else pause();
 };
-
-if (playFull) {
-  playFull.addEventListener("click", () => {
-    if (audio.paused) resume();
-    else pause();
-  });
-}
-
-if (prevFull) {
-  prevFull.addEventListener("click", () => goPrev());
-}
-
-if (nextFull) {
-  nextFull.addEventListener("click", () => goNext());
-}
-
-
-
-
-
 
 audio.addEventListener("loadedmetadata", () => {
   tDur.textContent = fmtTime(audio.duration);
@@ -1561,7 +1378,7 @@ seek.addEventListener("input", () => {
 
 });*/
 
-/*audio.addEventListener("ended", () => {
+audio.addEventListener("ended", () => {
 
   if (!queue.length) return;
 
@@ -1613,46 +1430,7 @@ seek.addEventListener("input", () => {
 
   playFromQueue(next);
 
-});*/
-
-
-audio.addEventListener("ended", async () => {
-  await goNext(true);
 });
-
-
-audio.addEventListener("play", () => {
-  wasPlayingBeforeInterruption = true;
-  syncPlaybackState();
-});
-
-audio.addEventListener("pause", () => {
-  syncPlaybackState();
-});
-
-document.addEventListener("visibilitychange", async () => {
-  if (document.hidden) {
-    wasPlayingBeforeInterruption = !audio.paused;
-    return;
-  }
-
-  if (!document.hidden && wasPlayingBeforeInterruption && audio.paused) {
-    setTimeout(() => resume(true), 150);
-    setTimeout(() => {
-      if (audio.paused) resume(true);
-    }, 600);
-  }
-});
-
-window.addEventListener("focus", () => {
-  if (wasPlayingBeforeInterruption && audio.paused) {
-    resume(true);
-  }
-});
-
-
-
-
 
 vol.addEventListener("input", () => {
   const v = Number(vol.value);

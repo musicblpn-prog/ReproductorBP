@@ -65,7 +65,10 @@ const favFullBtn = document.getElementById("favFullBtn");
 audio.preload = "auto";
 audio.crossOrigin = "anonymous";
 audio.playsInline = true;
+audio.setAttribute("playsinline", "");
+audio.setAttribute("webkit-playsinline", "");
 audio.autoplay = false;
+audio.muted = false;
 audio.volume = Number(vol?.value ?? 0.9);
 
 const audioPreload = new Audio();
@@ -93,6 +96,8 @@ const state = {
   pendingResumeAfterLoad: false,
   restoreTime: null,
   playRequestId: 0,
+  lastPauseOrigin: "user",
+  lastPlaySource: "ui",
 };
 
 // ---------- Utils ----------
@@ -191,6 +196,76 @@ function setMediaPlaybackState() {
     navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing";
   } catch {
     // noop
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForEvent(target, eventName, timeout = 1200) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      target.removeEventListener(eventName, onEvent);
+      resolve(ok);
+    };
+    const onEvent = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeout);
+    target.addEventListener(eventName, onEvent, { once: true });
+  });
+}
+
+async function hardResumeCurrentTrack({ requestId = state.playRequestId, time = audio.currentTime || 0 } = {}) {
+  const src = audio.currentSrc || audio.src;
+  if (!src) return false;
+
+  try {
+    audio.pause();
+  } catch {
+    // noop
+  }
+
+  audio.src = src;
+  audio.load();
+  await Promise.race([
+    waitForEvent(audio, "loadedmetadata", 1500),
+    waitForEvent(audio, "canplay", 1500),
+    delay(350),
+  ]);
+
+  if (requestId !== state.playRequestId) return false;
+
+  if (Number.isFinite(time) && time > 0) {
+    try {
+      const max = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : time;
+      audio.currentTime = Math.min(time, max);
+    } catch {
+      // noop
+    }
+  }
+
+  try {
+    await audio.play();
+    if (requestId !== state.playRequestId) return false;
+    state.userPaused = false;
+    state.interrupted = false;
+    state.pendingResumeAfterLoad = false;
+    state.isLoading = false;
+    syncPlayButtons();
+    refreshMediaSession(currentTrack());
+    preloadNextTrack();
+    savePlaybackSession();
+    return !audio.paused;
+  } catch (error) {
+    if (requestId !== state.playRequestId) return false;
+    state.isLoading = false;
+    state.pendingResumeAfterLoad = true;
+    console.debug("Hard resume pendiente:", error);
+    return false;
   }
 }
 
@@ -548,17 +623,18 @@ function setupMediaSession() {
     }
   };
 
-  safeHandler("play", async () => {
-    await resume();
+  safeHandler("play", () => {
+    state.lastPlaySource = "mediaSession";
+    Promise.resolve(resume({ preferReload: true, source: "mediaSession" })).catch(console.debug);
   });
   safeHandler("pause", () => {
-    pause({ byUser: true, fromSystem: true });
+    pause({ byUser: true, fromSystem: true, source: "mediaSession" });
   });
-  safeHandler("previoustrack", async () => {
-    await playPrevious();
+  safeHandler("previoustrack", () => {
+    Promise.resolve(playPrevious({ source: "mediaSession" })).then(() => render()).catch(console.debug);
   });
-  safeHandler("nexttrack", async () => {
-    await playNext();
+  safeHandler("nexttrack", () => {
+    Promise.resolve(playNext({ source: "mediaSession" })).then(() => render()).catch(console.debug);
   });
   safeHandler("seekbackward", (details) => {
     const delta = Number(details?.seekOffset) || 10;
@@ -580,6 +656,16 @@ function setupMediaSession() {
     }
     updateTimeUI();
   });
+
+  // Algunos entornos de iPhone refrescan mejor los controles cuando el estado se vuelve a publicar.
+  setMediaPlaybackState();
+}
+
+function refreshMediaSession(track = currentTrack()) {
+  setupMediaSession();
+  updateMediaMetadata(track);
+  setMediaPlaybackState();
+  updateTimeUI();
 }
 
 // ---------- Player core ----------
@@ -601,7 +687,7 @@ async function loadTrackByIndex(index, { autoplay = true, preserveTime = false }
   audio.load();
 
   updateNowPlayingUI(track);
-  updateMediaMetadata(track);
+  refreshMediaSession(track);
   syncPlayButtons();
   updateTimeUI();
   savePlaybackSession();
@@ -648,10 +734,11 @@ async function playFromQueue(index) {
   return loadTrackByIndex(index, { autoplay: true });
 }
 
-function pause({ byUser = true, fromSystem = false } = {}) {
+function pause({ byUser = true, fromSystem = false, source = "ui" } = {}) {
   if (!audio.src) return;
   state.userPaused = byUser;
-  state.interrupted = !byUser || fromSystem;
+  state.interrupted = !byUser || fromSystem || source === "mediaSession";
+  state.lastPauseOrigin = source === "mediaSession" || fromSystem ? "system" : "user";
   state.pendingResumeAfterLoad = false;
   audio.pause();
   syncPlayButtons();
@@ -659,7 +746,7 @@ function pause({ byUser = true, fromSystem = false } = {}) {
   savePlaybackSession();
 }
 
-async function resume() {
+async function resume({ preferReload = false, source = "ui" } = {}) {
   if (!audio.src) {
     rebuildQueue({ preserveCurrent: false });
     if (queue.length) {
@@ -670,10 +757,17 @@ async function resume() {
   }
 
   state.userPaused = false;
+  state.lastPlaySource = source;
   const requestId = ++state.playRequestId;
 
   if (audio.ended) {
     audio.currentTime = 0;
+  }
+
+  const shouldHardResume = preferReload || state.lastPauseOrigin === "system" || document.hidden || state.interrupted;
+
+  if (shouldHardResume) {
+    return hardResumeCurrentTrack({ requestId, time: audio.currentTime || 0 });
   }
 
   if (audio.readyState === 0 || audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
@@ -683,7 +777,7 @@ async function resume() {
   return attemptPlay(requestId);
 }
 
-async function playNext() {
+async function playNext({ source = "ui" } = {}) {
   rebuildQueue();
   if (!queue.length) return false;
 
@@ -701,7 +795,7 @@ async function playNext() {
   return playFromQueue(nextIndex);
 }
 
-async function playPrevious() {
+async function playPrevious({ source = "ui" } = {}) {
   rebuildQueue();
   if (!queue.length) return false;
 
@@ -1291,8 +1385,9 @@ function bindAudioEvents() {
   audio.addEventListener("play", () => {
     state.isLoading = false;
     state.interrupted = false;
+    state.lastPauseOrigin = "user";
     syncPlayButtons();
-    setMediaPlaybackState();
+    refreshMediaSession(currentTrack());
     updateTimeUI();
     savePlaybackSession();
   });
@@ -1300,8 +1395,9 @@ function bindAudioEvents() {
   audio.addEventListener("playing", () => {
     state.isLoading = false;
     state.pendingResumeAfterLoad = false;
+    state.interrupted = false;
     syncPlayButtons();
-    setMediaPlaybackState();
+    refreshMediaSession(currentTrack());
     preloadNextTrack();
     savePlaybackSession();
   });
@@ -1351,10 +1447,10 @@ function bindAudioEvents() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    // En iPhone NO forzamos auto-play al volver del lockscreen.
-    // Solo re-sincronizamos UI y MediaSession para evitar el bug de tiempo corriendo sin audio.
+    // Nunca forzamos autoplay al volver del lockscreen.
+    // Solo publicamos de nuevo metadata/estado para ayudar a iPhone a refrescar controles.
+    refreshMediaSession(currentTrack());
     syncPlayButtons();
-    setMediaPlaybackState();
     updateTimeUI();
   });
 

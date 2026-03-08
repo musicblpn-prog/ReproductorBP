@@ -9,6 +9,10 @@ const LS_FAV = "mi_music_favorites_v1";
 
 
 const audio = document.getElementById("audio");
+
+audio.preload = "auto";
+audio.crossOrigin = "anonymous";
+audio.playsInline = true;
 const playBtn = document.getElementById("playBtn");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
@@ -93,10 +97,18 @@ let shufflePos = 0;
 
 let pausedBySystem = false;
 
-audio.addEventListener("pause", () => {
+/*audio.addEventListener("pause", () => {
 
   if (!audio.ended && !document.hidden) {
     pausedBySystem = true;
+  }
+
+});*/
+
+audio.addEventListener("pause", () => {
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "paused";
   }
 
 });
@@ -104,11 +116,13 @@ audio.addEventListener("pause", () => {
 
 document.addEventListener("visibilitychange", () => {
 
-  if (!document.hidden && pausedBySystem) {
+  if (!document.hidden) {
 
-    pausedBySystem = false;
+    if (audio.paused && isPlaying) {
 
-    audio.play().catch(()=>{});
+      audio.play().catch(()=>{});
+
+    }
 
   }
 
@@ -1107,7 +1121,7 @@ function pause() {
 }
 }
 
-async function resume() {
+/*async function resume() {
   try {
     await audio.play();
     isPlaying = true;
@@ -1121,7 +1135,46 @@ async function resume() {
   navigator.mediaSession.playbackState = "playing";
 }
 
+}*/
+
+
+async function resume() {
+
+  try {
+
+    if (!audio.src) return;
+
+    // si el audio fue suspendido por iOS
+    if (audio.readyState === 0) {
+      audio.load();
+    }
+
+    await audio.play();
+
+    isPlaying = true;
+
+    updatePlayButtons();
+
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "playing";
+    }
+
+  } catch (err) {
+
+    console.log("Resume error:", err);
+
+    // iOS a veces necesita esperar a que cargue
+    const once = () => {
+      audio.removeEventListener("canplay", once);
+      audio.play().catch(()=>{});
+    };
+
+    audio.addEventListener("canplay", once);
+
+  }
+
 }
+
 
 // --------- Events ----------
 playBtn.onclick = () => {

@@ -17,6 +17,7 @@ const seek = document.getElementById("seek");
 const vol = document.getElementById("vol");
 const tCur = document.getElementById("tCur");
 const tDur = document.getElementById("tDur");
+const refreshAppBtn = document.getElementById("refreshAppBtn");
 
 const npTitle = document.getElementById("npTitle");
 const npSub = document.getElementById("npSub");
@@ -103,6 +104,19 @@ const state = {
 };
 
 // ---------- Utils ----------
+function refreshApp() {
+
+  try {
+
+    savePlaybackSession();
+
+  } catch {}
+
+  location.reload();
+
+}
+
+
 function normalize(str) {
   return (str ?? "").toString().trim();
 }

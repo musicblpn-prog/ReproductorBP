@@ -98,6 +98,8 @@ const state = {
   playRequestId: 0,
   lastPauseOrigin: "user",
   lastPlaySource: "ui",
+  mediaSessionReady: false,
+  recoveringAudio: false,
 };
 
 // ---------- Utils ----------
@@ -197,6 +199,46 @@ function setMediaPlaybackState() {
   } catch {
     // noop
   }
+}
+
+function syncPlayerState(track = currentTrack()) {
+
+  syncPlayButtons();
+
+  setMediaPlaybackState();
+
+  updateTimeUI();
+
+  if (track) {
+    updateMediaMetadata(track);
+  }
+
+}
+
+// ---------- Mantener MediaSession viva en iPhone ----------
+function keepMediaSessionAlive() {
+
+  if (!("mediaSession" in navigator)) return;
+
+  setInterval(() => {
+
+    if (!audio.src || audio.paused) return;
+
+    const track = currentTrack();
+
+    if (!track) return;
+
+    try {
+
+      updateMediaMetadata(track);
+      setMediaPlaybackState();
+      updateTimeUI();
+
+    } catch {
+      // algunos iOS lanzan errores silenciosos
+    }
+
+  }, 15000); // cada 15 segundos
 }
 
 function delay(ms) {
@@ -299,6 +341,7 @@ function updateNowPlayingUI(track) {
   }
 
   if (speedControl) speedControl.value = String(audio.playbackRate || 1);
+  registerMediaSession(track);
 }
 
 function currentTrack() {
@@ -506,6 +549,9 @@ function buildQueueForCurrentView() {
 function rebuildQueue({ preserveCurrent = true } = {}) {
   const currentId = preserveCurrent ? currentTrack()?.id ?? null : null;
   queue = buildQueueForCurrentView();
+
+  shuffleOrder = [];
+    shufflePos = -1;
   if (currentId) {
     currentIndex = queue.findIndex((track) => track.id === currentId);
   }
@@ -582,12 +628,27 @@ function getNextIndex(step = 1) {
 }
 
 function preloadNextTrack() {
+
   if (!queue.length || currentIndex < 0) return;
+
   const nextIndex = getNextIndex(1);
+
   if (nextIndex < 0) return;
+
   const nextTrack = queue[nextIndex];
+
   if (!nextTrack?.url) return;
-  audioPreload.src = toPlayableUrl(nextTrack.url);
+
+  const nextSrc = toPlayableUrl(nextTrack.url);
+
+  if (audioPreload.src !== nextSrc) {
+
+    audioPreload.src = nextSrc;
+    audioPreload.load();
+    audioPreload.currentTime = 0;
+
+  }
+
 }
 
 // ---------- Media Session ----------
@@ -608,62 +669,65 @@ function updateMediaMetadata(track) {
           ]
         : [],
     });
+    setMediaPlaybackState();
   } catch {
     // noop
   }
 }
 
-function setupMediaSession() {
+
+
+function registerMediaSession(track) {
+
   if (!("mediaSession" in navigator)) return;
-  const safeHandler = (name, handler) => {
-    try {
-      navigator.mediaSession.setActionHandler(name, handler);
-    } catch {
-      // Algunas combinaciones navegador/iOS no soportan todos los handlers.
-    }
-  };
 
-  safeHandler("play", () => {
-    state.lastPlaySource = "mediaSession";
-    Promise.resolve(resume({ preferReload: true, source: "mediaSession" })).catch(console.debug);
-  });
-  safeHandler("pause", () => {
-    pause({ byUser: true, fromSystem: true, source: "mediaSession" });
-  });
-  safeHandler("previoustrack", () => {
-    Promise.resolve(playPrevious({ source: "mediaSession" })).then(() => render()).catch(console.debug);
-  });
-  safeHandler("nexttrack", () => {
-    Promise.resolve(playNext({ source: "mediaSession" })).then(() => render()).catch(console.debug);
-  });
-  safeHandler("seekbackward", (details) => {
-    const delta = Number(details?.seekOffset) || 10;
-    audio.currentTime = Math.max(0, audio.currentTime - delta);
-    updateTimeUI();
-  });
-  safeHandler("seekforward", (details) => {
-    const delta = Number(details?.seekOffset) || 10;
-    const max = Number.isFinite(audio.duration) ? audio.duration : audio.currentTime + delta;
-    audio.currentTime = Math.min(max, audio.currentTime + delta);
-    updateTimeUI();
-  });
-  safeHandler("seekto", (details) => {
-    if (typeof details?.seekTime !== "number") return;
-    if (details.fastSeek && typeof audio.fastSeek === "function") {
-      audio.fastSeek(details.seekTime);
-    } else {
-      audio.currentTime = details.seekTime;
-    }
-    updateTimeUI();
-  });
+  try {
 
-  // Algunos entornos de iPhone refrescan mejor los controles cuando el estado se vuelve a publicar.
-  setMediaPlaybackState();
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track?.title || "Mi Music",
+      artist: track?.artist || "",
+      album: track?.album || "",
+      artwork: track?.cover
+        ? [
+            { src: track.cover, sizes: "96x96", type: "image/png" },
+            { src: track.cover, sizes: "128x128", type: "image/png" },
+            { src: track.cover, sizes: "192x192", type: "image/png" },
+            { src: track.cover, sizes: "256x256", type: "image/png" },
+            { src: track.cover, sizes: "512x512", type: "image/png" },
+          ]
+        : []
+    });
+
+    navigator.mediaSession.setActionHandler("play", async () => {
+      if (!audio.paused) return;
+      await resume({ source: "mediaSession" });
+    });
+
+    navigator.mediaSession.setActionHandler("pause", () => {
+      pause({ byUser: true, source: "mediaSession" });
+    });
+
+    navigator.mediaSession.setActionHandler("previoustrack", async () => {
+      await playPrevious({ source: "mediaSession" });
+      render();
+    });
+
+    navigator.mediaSession.setActionHandler("nexttrack", async () => {
+      await playNext({ source: "mediaSession" });
+      render();
+    });
+
+    navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing";
+
+  } catch (e) {
+    console.debug("MediaSession error", e);
+  }
+
 }
 
+
+
 function refreshMediaSession(track = currentTrack()) {
-  setupMediaSession();
-  updateMediaMetadata(track);
   setMediaPlaybackState();
   updateTimeUI();
 }
@@ -682,15 +746,26 @@ async function loadTrackByIndex(index, { autoplay = true, preserveTime = false }
   state.pendingResumeAfterLoad = false;
   state.restoreTime = preserveTime ? audio.currentTime : null;
 
-  audio.pause();
+audio.pause();
+
+if (audioPreload.src === src) {
+
+  audio.src = audioPreload.src;
+
+} else {
+
   audio.src = src;
   audio.load();
 
+}
+
+audio.currentTime = 0;
+
   updateNowPlayingUI(track);
-  refreshMediaSession(track);
-  syncPlayButtons();
-  updateTimeUI();
-  savePlaybackSession();
+
+syncPlayerState(track);
+
+savePlaybackSession();
 
   if (!autoplay) {
     state.userPaused = true;
@@ -702,32 +777,46 @@ async function loadTrackByIndex(index, { autoplay = true, preserveTime = false }
 }
 
 async function attemptPlay(requestId = state.playRequestId) {
+
   try {
+
     if (!audio.src) return false;
+
     if (audio.readyState === 0) {
       state.pendingResumeAfterLoad = true;
       audio.load();
     }
 
     await audio.play();
+
     if (requestId !== state.playRequestId) return false;
 
     state.userPaused = false;
     state.interrupted = false;
     state.pendingResumeAfterLoad = false;
     state.isLoading = false;
-    syncPlayButtons();
-    setMediaPlaybackState();
+
+    syncPlayerState(currentTrack());
+
     preloadNextTrack();
+
     savePlaybackSession();
+
     return true;
+
   } catch (error) {
+
     if (requestId !== state.playRequestId) return false;
+
     state.isLoading = false;
     state.pendingResumeAfterLoad = true;
+
     console.debug("Play pendiente:", error);
+
     return false;
+
   }
+
 }
 
 async function playFromQueue(index) {
@@ -774,7 +863,14 @@ async function resume({ preferReload = false, source = "ui" } = {}) {
     audio.load();
   }
 
-  return attemptPlay(requestId);
+  const ok = await attemptPlay(requestId);
+
+if (ok) {
+  state.interrupted = false;
+  setMediaPlaybackState();
+}
+
+return ok;
 }
 
 async function playNext({ source = "ui" } = {}) {
@@ -792,6 +888,8 @@ async function playNext({ source = "ui" } = {}) {
     updateTimeUI();
     return false;
   }
+  preloadNextTrack();
+
   return playFromQueue(nextIndex);
 }
 
@@ -1382,31 +1480,36 @@ function bindUIEvents() {
 }
 
 function bindAudioEvents() {
-  audio.addEventListener("play", () => {
-    state.isLoading = false;
-    state.interrupted = false;
-    state.lastPauseOrigin = "user";
-    syncPlayButtons();
-    refreshMediaSession(currentTrack());
-    updateTimeUI();
-    savePlaybackSession();
-  });
+ audio.addEventListener("play", () => {
+
+  state.isLoading = false;
+  state.interrupted = false;
+  state.lastPauseOrigin = "user";
+
+  syncPlayerState(currentTrack());
+
+  savePlaybackSession();
+
+});
 
   audio.addEventListener("playing", () => {
-    state.isLoading = false;
-    state.pendingResumeAfterLoad = false;
-    state.interrupted = false;
-    syncPlayButtons();
-    refreshMediaSession(currentTrack());
-    preloadNextTrack();
-    savePlaybackSession();
-  });
 
-  audio.addEventListener("pause", () => {
-    syncPlayButtons();
-    setMediaPlaybackState();
-    savePlaybackSession();
-  });
+  state.isLoading = false;
+  state.pendingResumeAfterLoad = false;
+
+  syncPlayerState(currentTrack());
+
+  preloadNextTrack();
+
+});
+
+     audio.addEventListener("pause", () => {
+
+  syncPlayerState(currentTrack());
+
+  savePlaybackSession();
+
+});
 
   audio.addEventListener("loadedmetadata", () => {
     if (state.restoreTime != null && Number.isFinite(audio.duration)) {
@@ -1446,15 +1549,79 @@ function bindAudioEvents() {
     console.error("Error de audio:", audio.error);
   });
 
-  document.addEventListener("visibilitychange", () => {
-    // Nunca forzamos autoplay al volver del lockscreen.
-    // Solo publicamos de nuevo metadata/estado para ayudar a iPhone a refrescar controles.
-    refreshMediaSession(currentTrack());
-    syncPlayButtons();
-    updateTimeUI();
-  });
 
-  window.addEventListener("pagehide", savePlaybackSession);
+
+audio.addEventListener("waiting", async () => {
+  if (state.userPaused) return;
+  if (audio.paused) return;
+  if (state.lastPauseOrigin === "system") return;
+  if (state.recoveringAudio) return;
+
+  state.recoveringAudio = true;
+
+  try {
+    const requestId = ++state.playRequestId;
+
+    await hardResumeCurrentTrack({
+      requestId,
+      time: audio.currentTime || 0
+    });
+  } finally {
+    setTimeout(() => {
+      state.recoveringAudio = false;
+    }, 800);
+  }
+});
+
+audio.addEventListener("stalled", async () => {
+  if (state.userPaused) return;
+  if (audio.paused) return;
+  if (state.lastPauseOrigin === "system") return;
+  if (state.recoveringAudio) return;
+
+  state.recoveringAudio = true;
+
+  try {
+    const requestId = ++state.playRequestId;
+
+    await hardResumeCurrentTrack({
+      requestId,
+      time: audio.currentTime || 0
+    });
+  } finally {
+    setTimeout(() => {
+      state.recoveringAudio = false;
+    }, 800);
+  }
+});
+
+
+document.addEventListener("visibilitychange", () => {
+
+  const track = currentTrack();
+
+  if (!track) return;
+
+  // Re-publicar metadata al volver del lockscreen
+  updateMediaMetadata(track);
+
+  // Sincronizar estado real
+  syncPlayerState(track);
+
+});
+
+  window.addEventListener("pagehide", () => {
+
+  savePlaybackSession();
+
+  const track = currentTrack();
+
+  if (track) {
+    updateMediaMetadata(track);
+    setMediaPlaybackState();
+  }
+
+});
   window.addEventListener("beforeunload", savePlaybackSession);
 }
 
@@ -1499,7 +1666,7 @@ function restorePlaybackState() {
 }
 
 // ---------- Init ----------
-setupMediaSession();
+
 bindUIEvents();
 bindAudioEvents();
 syncPlayButtons();
@@ -1508,3 +1675,4 @@ syncShuffleButtons();
 render();
 restorePlaybackState();
 updateTimeUI();
+keepMediaSessionAlive();

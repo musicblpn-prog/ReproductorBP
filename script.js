@@ -748,7 +748,10 @@ function refreshMediaSession(track = currentTrack()) {
 
 // ---------- Player core ----------
 async function loadTrackByIndex(index, { autoplay = true, preserveTime = false } = {}) {
-  rebuildQueue({ preserveCurrent: false });
+
+  if (!queue.length) {
+    rebuildQueue({ preserveCurrent: false });
+  }
   if (index < 0 || index >= queue.length) return false;
 
   currentIndex = index;
@@ -1544,18 +1547,55 @@ function bindAudioEvents() {
     updateTimeUI();
   });
 
-  audio.addEventListener("ended", async () => {
-    state.isLoading = false;
+ audio.addEventListener("ended", async () => {
+
+  if (state.isLoading) return;
+
+  state.isLoading = true;
+
+  try {
+
     const nextIndex = getNextIndex(1);
-    if (nextIndex < 0) {
-      pause({ byUser: false });
+
+    // repeat one
+    if (state.repeatMode === "one") {
+
       audio.currentTime = 0;
-      updateTimeUI();
+
+      await resume();
+
       return;
+
     }
+
+    // no hay siguiente canción
+    if (nextIndex < 0) {
+
+      pause({ byUser: false });
+
+      audio.currentTime = 0;
+
+      updateTimeUI();
+
+      return;
+
+    }
+
     await playFromQueue(nextIndex);
+
     render();
-  });
+
+  } catch (e) {
+
+    console.debug("Error avanzando canción:", e);
+
+  } finally {
+
+    state.isLoading = false;
+
+  }
+
+});
 
   audio.addEventListener("error", () => {
     state.isLoading = false;

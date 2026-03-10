@@ -506,9 +506,6 @@ function buildQueueForCurrentView() {
 function rebuildQueue({ preserveCurrent = true } = {}) {
   const currentId = preserveCurrent ? currentTrack()?.id ?? null : null;
   queue = buildQueueForCurrentView();
-
-  shuffleOrder = [];
-    shufflePos = -1;
   if (currentId) {
     currentIndex = queue.findIndex((track) => track.id === currentId);
   }
@@ -633,13 +630,12 @@ function setupMediaSession() {
   safeHandler("pause", () => {
     pause({ byUser: true, fromSystem: true, source: "mediaSession" });
   });
-safeHandler("previoustrack", () => {
-  prevBtn.click();
-});
-
-safeHandler("nexttrack", () => {
-  nextBtn.click();
-});
+  safeHandler("previoustrack", () => {
+    Promise.resolve(playPrevious({ source: "mediaSession" })).then(() => render()).catch(console.debug);
+  });
+  safeHandler("nexttrack", () => {
+    Promise.resolve(playNext({ source: "mediaSession" })).then(() => render()).catch(console.debug);
+  });
   safeHandler("seekbackward", (details) => {
     const delta = Number(details?.seekOffset) || 10;
     audio.currentTime = Math.max(0, audio.currentTime - delta);
@@ -663,7 +659,6 @@ safeHandler("nexttrack", () => {
 
   // Algunos entornos de iPhone refrescan mejor los controles cuando el estado se vuelve a publicar.
   setMediaPlaybackState();
-  updateTimeUI();
 }
 
 function refreshMediaSession(track = currentTrack()) {
@@ -690,11 +685,9 @@ async function loadTrackByIndex(index, { autoplay = true, preserveTime = false }
   audio.pause();
   audio.src = src;
   audio.load();
-  audio.currentTime = 0;
 
   updateNowPlayingUI(track);
   refreshMediaSession(track);
-  setMediaPlaybackState();
   syncPlayButtons();
   updateTimeUI();
   savePlaybackSession();
@@ -717,8 +710,6 @@ async function attemptPlay(requestId = state.playRequestId) {
     }
 
     await audio.play();
-    preloadNextTrack();
-    setMediaPlaybackState();
     if (requestId !== state.playRequestId) return false;
 
     state.userPaused = false;
@@ -783,14 +774,7 @@ async function resume({ preferReload = false, source = "ui" } = {}) {
     audio.load();
   }
 
-  const ok = await attemptPlay(requestId);
-
-if (ok) {
-  state.interrupted = false;
-  setMediaPlaybackState();
-}
-
-return ok;
+  return attemptPlay(requestId);
 }
 
 async function playNext({ source = "ui" } = {}) {
@@ -808,8 +792,6 @@ async function playNext({ source = "ui" } = {}) {
     updateTimeUI();
     return false;
   }
-  preloadNextTrack();
-
   return playFromQueue(nextIndex);
 }
 
@@ -1406,7 +1388,6 @@ function bindAudioEvents() {
     state.lastPauseOrigin = "user";
     syncPlayButtons();
     refreshMediaSession(currentTrack());
-    setMediaPlaybackState();
     updateTimeUI();
     savePlaybackSession();
   });
@@ -1421,11 +1402,11 @@ function bindAudioEvents() {
     savePlaybackSession();
   });
 
-      audio.addEventListener("pause", () => {
-        syncPlayButtons();
-        setMediaPlaybackState();
-        savePlaybackSession();
-      });
+  audio.addEventListener("pause", () => {
+    syncPlayButtons();
+    setMediaPlaybackState();
+    savePlaybackSession();
+  });
 
   audio.addEventListener("loadedmetadata", () => {
     if (state.restoreTime != null && Number.isFinite(audio.duration)) {
@@ -1464,36 +1445,6 @@ function bindAudioEvents() {
     syncPlayButtons();
     console.error("Error de audio:", audio.error);
   });
-
-
-
-audio.addEventListener("waiting", async () => {
-  if (state.userPaused) return;
-
-  console.debug("Audio esperando datos… intentando recuperar");
-
-  const requestId = ++state.playRequestId;
-
-  await hardResumeCurrentTrack({
-    requestId,
-    time: audio.currentTime || 0
-  });
-});
-
-
-audio.addEventListener("stalled", async () => {
-  if (state.userPaused) return;
-
-  console.debug("Audio detenido… intentando recuperación");
-
-  const requestId = ++state.playRequestId;
-
-  await hardResumeCurrentTrack({
-    requestId,
-    time: audio.currentTime || 0
-  });
-});
-
 
   document.addEventListener("visibilitychange", () => {
     // Nunca forzamos autoplay al volver del lockscreen.

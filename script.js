@@ -7,6 +7,7 @@
 const LS_KEY = "mi_music_library_v1";
 const LS_FAV = "mi_music_favorites_v1";
 
+
 const audio = document.getElementById("audio");
 const playBtn = document.getElementById("playBtn");
 const prevBtn = document.getElementById("prevBtn");
@@ -71,23 +72,27 @@ const repeatBtn = document.getElementById("repeatBtn");
 // --------- State ----------
 let library = loadLibrary(); // {genres:{[name]:{albums:{[name]:{cover, tracks:[]}}}}}
 let view = "genres"; // genres | albums | songs | collections
+let queueContext = { type: "all" };
+// type: "all" | "genre" | "album" | "favorites" | "collectionSongs"
 let selectedGenre = null;
 let selectedAlbum = null;
 
 let queue = []; // lista de tracks visibles (para siguiente/anterior)
 let currentIndex = -1;
 let isPlaying = false;
-let favorites = loadFavorites();
+
 let isShuffle = false;
 let repeatMode = "off";// puede ser: "off" | "all" | "one"
 let previousView = null;
+
+let shuffleOrder = [];  // array de índices
+let shufflePos = 0;
+
 // --------- Init ----------
 audio.volume = Number(vol.value);
 render();
 
-if (!library.collections["Favoritos"]) {
-  library.collections["Favoritos"] = [];
-}
+
 
 if (repeatFull) {
   repeatFull.addEventListener("click", () => {
@@ -116,18 +121,97 @@ if (repeatFull) {
 }
 
 
-function loadFavorites() {
-  try {
+
+
+
+let favorites = loadFavorites(); // Set(trackId)
+
+function loadFavorites(){
+  try{
     const raw = localStorage.getItem(LS_FAV);
-    if (!raw) return new Set();
-    return new Set(JSON.parse(raw));
-  } catch {
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr : []);
+  }catch{
     return new Set();
   }
 }
 
-function saveFavorites() {
+function saveFavorites(){
   localStorage.setItem(LS_FAV, JSON.stringify([...favorites]));
+}
+
+
+// 
+function resetShuffle(){
+  shuffleOrder = [];
+  shufflePos = 0;
+}
+
+function makeShuffleOrder(n){
+  const arr = [...Array(n).keys()];
+  for(let i = arr.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+//
+
+
+function buildQueueForCurrentView(){
+  const q = normalize(searchInput.value).toLowerCase();
+
+  // 1) Favoritos (inteligente)
+  if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
+    queueContext = { type: "favorites" };
+    let tracks = favoriteTracks();
+    if (q) tracks = tracks.filter(t => (t.title+" "+t.artist+" "+t.genre+" "+t.album).toLowerCase().includes(q));
+    tracks.sort((a,b)=> (a.artist+a.album+a.title).localeCompare(b.artist+b.album+b.title));
+    return tracks;
+  }
+
+// 1.5) Otras colecciones personalizadas
+if (view === "collectionSongs" && selectedAlbum !== "Favoritos") {
+
+  queueContext = { type: "collection", name: selectedAlbum };
+
+  const trackIds = library.collections[selectedAlbum] || [];
+  let tracks = allTracks().filter(t => trackIds.includes(t.id));
+
+  if (q) tracks = tracks.filter(t => matchTrack(t, q));
+
+  tracks.sort((a,b)=>
+    (a.artist+a.album+a.title)
+      .localeCompare(b.artist+b.album+b.title)
+  );
+
+  return tracks;
+}
+
+
+
+  // 2) Songs dentro de un álbum específico
+  if (view === "songs" && selectedGenre && selectedAlbum) {
+    queueContext = { type: "album", genre: selectedGenre, album: selectedAlbum };
+    let tracks = (library.genres[selectedGenre]?.albums?.[selectedAlbum]?.tracks ?? [])
+      .map(t => ({...t, genre: selectedGenre, album: selectedAlbum}));
+    if (q) tracks = tracks.filter(t => (t.title+" "+t.artist+" "+t.genre+" "+t.album).toLowerCase().includes(q));
+    tracks.sort((a,b)=> (a.artist+a.album+a.title).localeCompare(b.artist+b.album+b.title));
+    return tracks;
+  }
+
+  // 3) Songs global
+  if (view === "songs") {
+    queueContext = { type: "all" };
+    let tracks = allTracks();
+    if (q) tracks = tracks.filter(t => (t.title+" "+t.artist+" "+t.genre+" "+t.album).toLowerCase().includes(q));
+    tracks.sort((a,b)=> (a.artist+a.album+a.title).localeCompare(b.artist+b.album+b.title));
+    return tracks;
+  }
+
+  // Por defecto
+  queueContext = { type: "all" };
+  return allTracks();
 }
 
 
@@ -236,6 +320,21 @@ function allTracks() {
   return out;
 }
 
+function favoriteTracks(){
+  const all = allTracks();
+  return all.filter(t => favorites.has(t.id));
+}
+
+function cleanFavorites() {
+  if (!library.collections) return;
+
+
+  const existingIds = new Set(allTracks().map(t => t.id));
+
+
+  saveLibrary();
+}
+
 // --------- Rendering ----------
 function setActiveNav() {
   [navGenres, navAlbums, navSongs].forEach(b => b.classList.remove("active"));
@@ -269,6 +368,7 @@ function setCrumbs() {
 function render() {
   setActiveNav();
   setCrumbs();
+  cleanFavorites();
 
   const q = normalize(searchInput.value).toLowerCase();
   listEl.innerHTML = "";
@@ -286,11 +386,19 @@ if (view === "collections") {
   const collections = Object.keys(library.collections);
 
   collections.forEach(name => {
-    const trackIds = library.collections[name] || [];
+
+    let count = 0;
+
+    if (name === "Favoritos") {
+      count = favoriteTracks().length;
+    } else {
+      const trackIds = library.collections[name] || [];
+      count = trackIds.length;
+    }
 
     listEl.appendChild(card({
       title: name,
-      sub: `${trackIds.length} canción(es)`,
+      sub: `${count} canción(es)`,
       pill: "Abrir",
       onClick: () => {
         selectedAlbum = name;
@@ -304,10 +412,18 @@ if (view === "collections") {
 }
 
 
-if (view === "collectionSongs") {
+if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
 
-  const trackIds = library.collections[selectedAlbum] || [];
-  const tracks = allTracks().filter(t => trackIds.includes(t.id));
+  let tracks = favoriteTracks();
+
+  if (q) {
+    tracks = tracks.filter(t => matchTrack(t, q));
+  }
+
+  tracks.sort((a,b)=>
+    (a.artist+a.album+a.title)
+      .localeCompare(b.artist+b.album+b.title)
+  );
 
   queue = tracks;
 
@@ -542,13 +658,12 @@ function songRow(t, idx) {
         <div class="row" style="margin-top:8px;">
           <span class="pill play-btn">▶</span>
           <span class="fav-btn">${favorites.has(t.id) ? "❤️" : "🤍"}</span>
-<span class="delete-btn">🗑</span>
+          <span class="delete-btn">🗑</span>
         </div>
       </div>
     </div>
   `;
 
-  // Si tiene portada la aplicamos
   if (t.cover) {
     const cover = div.querySelector(".song-cover");
     cover.style.backgroundImage = `url("${t.cover}")`;
@@ -556,9 +671,18 @@ function songRow(t, idx) {
     cover.style.backgroundPosition = "center";
   }
 
-  div.querySelector(".play-btn").onclick = (e) => {
+  const favBtn = div.querySelector(".fav-btn");
+
+  if (favorites.has(t.id)) {
+    favBtn.classList.add("active");
+  } else {
+    favBtn.classList.remove("active");
+  }
+
+  favBtn.onclick = (e) => {
     e.stopPropagation();
-    playFromQueue(idx);
+    toggleFavorite(t);
+    favBtn.classList.toggle("active");
   };
 
   div.querySelector(".delete-btn").onclick = (e) => {
@@ -566,31 +690,12 @@ function songRow(t, idx) {
     deleteSong(t);
   };
 
-div.querySelector(".fav-btn").onclick = (e) => {
-  e.stopPropagation();
-
-  if (favorites.has(t.id)) {
-    favorites.delete(t.id);
-
-    // quitar de colección Favoritos
-    library.collections["Favoritos"] =
-      library.collections["Favoritos"].filter(id => id !== t.id);
-
-  } else {
-    favorites.add(t.id);
-
-    // agregar a colección Favoritos
-    if (!library.collections["Favoritos"].includes(t.id)) {
-      library.collections["Favoritos"].push(t.id);
-    }
-  }
-
-  saveFavorites();
-  saveLibrary();
-  render();
-};
-
-
+  // 🔥 AQUÍ ESTÁ LO QUE FALTABA
+  div.querySelector(".play-btn").onclick = (e) => {
+    e.stopPropagation();
+    queue = buildQueueForCurrentView();
+    playFromQueue(idx);
+  };
 
   return div;
 }
@@ -608,6 +713,10 @@ function deleteSong(track) {
   library.genres[genre].albums[album].tracks =
     albumTracks.filter(t => t.id !== track.id);
 
+    
+// quitar de favoritos si existía
+
+  cleanFavorites();
   saveLibrary();
 
   if (currentIndex !== -1) {
@@ -627,6 +736,22 @@ function escapeHtml(str) {
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
+
+function toggleFavorite(track){
+  if (!track?.id) return;
+
+  if (favorites.has(track.id)) {
+    favorites.delete(track.id);
+  } else {
+    favorites.add(track.id);
+  }
+
+  saveFavorites();
+  render();
+}
+
+
+
 
 // 
 function deleteAlbum(genreName, albumName) {
@@ -671,6 +796,9 @@ function deleteAlbum(genreName, albumName) {
 
 // --------- Player ----------
 async function playFromQueue(index) {
+
+  queue = buildQueueForCurrentView();  // 🔥 FORZAMOS QUEUE ACTUAL
+
   if (index < 0 || index >= queue.length) return;
 
   currentIndex = index;
@@ -753,6 +881,17 @@ if (favFullBtn) {
   favFullBtn.textContent = favorites.has(t.id) ? "❤️" : "🤍";
 }
 
+
+if (favFullBtn) {
+  if (favorites.has(t.id)) {
+    favFullBtn.classList.add("active");
+  } else {
+    favFullBtn.classList.remove("active");
+  }
+}
+
+
+
   speedControl.value = String(audio.playbackRate || 1);
 }
 
@@ -766,7 +905,20 @@ if (favFullBtn) {
 
   navigator.mediaSession.setActionHandler("previoustrack", () => {
     prevBtn.click();
-  });
+
+
+
+
+
+
+  }
+
+
+
+
+
+
+);
 
 
 
@@ -846,31 +998,16 @@ if (shuffleFull) {
 }
 
 
+
+
 if (favFullBtn) {
   favFullBtn.addEventListener("click", () => {
 
     if (currentIndex < 0) return;
 
     const t = queue[currentIndex];
+    toggleFavorite(t);
 
-    if (favorites.has(t.id)) {
-      favorites.delete(t.id);
-
-      library.collections["Favoritos"] =
-        library.collections["Favoritos"].filter(id => id !== t.id);
-
-    } else {
-      favorites.add(t.id);
-
-      if (!library.collections["Favoritos"].includes(t.id)) {
-        library.collections["Favoritos"].push(t.id);
-      }
-    }
-
-    saveFavorites();
-    saveLibrary();
-    updateNowPlayingUI(t);
-    render();
   });
 }
 
@@ -894,13 +1031,44 @@ speedControl.addEventListener("change", () => {
 
 
 prevBtn.onclick = () => {
+  queue = buildQueueForCurrentView();
   if (!queue.length) return;
+
+  if (isShuffle) {
+    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
+      shuffleOrder = makeShuffleOrder(queue.length);
+      shufflePos = 0;
+    }
+    shufflePos = Math.max(0, shufflePos - 1);
+    playFromQueue(shuffleOrder[shufflePos]);
+    return;
+  }
+
   const next = currentIndex <= 0 ? 0 : currentIndex - 1;
   playFromQueue(next);
 };
 
 nextBtn.onclick = () => {
+  queue = buildQueueForCurrentView();
   if (!queue.length) return;
+
+  if (isShuffle) {
+    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
+      shuffleOrder = makeShuffleOrder(queue.length);
+      shufflePos = 0;
+    }
+    shufflePos++;
+
+    // si se acabó, genera nuevo orden (sin repetir hasta terminar)
+    if (shufflePos >= shuffleOrder.length) {
+      shuffleOrder = makeShuffleOrder(queue.length);
+      shufflePos = 0;
+    }
+
+    playFromQueue(shuffleOrder[shufflePos]);
+    return;
+  }
+
   const next = currentIndex >= queue.length - 1 ? currentIndex : currentIndex + 1;
   playFromQueue(next);
 };

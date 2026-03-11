@@ -336,6 +336,7 @@ function cleanFavorites() {
 }
 
 // --------- Rendering ----------
+
 function setActiveNav() {
   [navGenres, navAlbums, navSongs].forEach(b => b.classList.remove("active"));
   if (view === "genres") navGenres.classList.add("active");
@@ -365,178 +366,159 @@ function setCrumbs() {
   });
 }
 
+function renderAlbums(q) {
+
+  if (!selectedGenre) {
+
+    const albums = [];
+
+    for (const [genreName, genre] of Object.entries(library.genres)) {
+
+      for (const [albumName, album] of Object.entries(genre.albums ?? {})) {
+
+        albums.push({
+          genre: genreName,
+          album: albumName,
+          cover: album.cover || "",
+          tracks: album.tracks ?? []
+        });
+
+      }
+
+    }
+
+    const filtered = q
+      ? albums.filter((item) =>
+          `${item.album} ${item.genre}`.toLowerCase().includes(q)
+        )
+      : albums;
+
+    filtered
+      .sort((a, b) =>
+        `${a.album}${a.genre}`.localeCompare(`${b.album}${b.genre}`)
+      )
+      .forEach((item) => {
+
+        listEl.appendChild(
+
+          cardAlbum({
+            title: item.album,
+            cover: item.cover,
+            sub: `${item.genre} · ${item.tracks.length} canción(es)`,
+            pill: "Abrir",
+
+            onClick: () => {
+
+              selectedGenre = item.genre;
+              selectedAlbum = item.album;
+              view = "songs";
+
+              render();
+
+            },
+
+            onDelete: () => deleteAlbum(item.genre, item.album)
+
+          })
+
+        );
+
+      });
+
+    return;
+
+  }
+
+  const albums = Object.keys(
+    library.genres[selectedGenre]?.albums ?? {}
+  ).sort((a, b) => a.localeCompare(b));
+
+  const filtered = q
+    ? albums.filter((albumName) => albumName.toLowerCase().includes(q))
+    : albums;
+
+  filtered.forEach((albumName) => {
+
+    const album = library.genres[selectedGenre].albums[albumName];
+
+    listEl.appendChild(
+
+      cardAlbum({
+
+        title: albumName,
+        cover: album.cover || "",
+        sub: `${album.tracks?.length ?? 0} canción(es)`,
+        pill: "Ver",
+
+        onClick: () => {
+
+          selectedAlbum = albumName;
+          view = "songs";
+
+          render();
+
+        },
+
+        onDelete: () => deleteAlbum(selectedGenre, albumName)
+
+      })
+
+    );
+
+  });
+
+}
+
+
+
 function render() {
-  setActiveNav();
-  setCrumbs();
+
   cleanFavorites();
 
-  const q = normalize(searchInput.value).toLowerCase();
+  setActiveNav();
+
+  setCrumbs();
+
+  const q = normalize(searchInput?.value).toLowerCase();
+
   listEl.innerHTML = "";
 
   const hasAny = allTracks().length > 0;
-  emptyEl.classList.toggle("hidden", hasAny);
 
-  if (!hasAny) {
-    // solo mostramos vacío
+  emptyEl?.classList.toggle("hidden", hasAny);
+
+  if (!hasAny) return;
+
+  if (view === "collections") {
+
+    renderCollections(q);
     return;
+
   }
 
-if (view === "collections") {
+  if (view === "collectionSongs") {
 
-  const collections = Object.keys(library.collections);
+    renderCollectionSongs(q);
+    return;
 
-  collections.forEach(name => {
-
-    let count = 0;
-
-    if (name === "Favoritos") {
-      count = favoriteTracks().length;
-    } else {
-      const trackIds = library.collections[name] || [];
-      count = trackIds.length;
-    }
-
-    listEl.appendChild(card({
-      title: name,
-      sub: `${count} canción(es)`,
-      pill: "Abrir",
-      onClick: () => {
-        selectedAlbum = name;
-        view = "collectionSongs";
-        render();
-      }
-    }));
-  });
-
-  return;
-}
-
-
-if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
-
-  let tracks = favoriteTracks();
-
-  if (q) {
-    tracks = tracks.filter(t => matchTrack(t, q));
   }
-
-  tracks.sort((a,b)=>
-    (a.artist+a.album+a.title)
-      .localeCompare(b.artist+b.album+b.title)
-  );
-
-  queue = tracks;
-
-  tracks.forEach((t, idx) => {
-    listEl.appendChild(songRow(t, idx));
-  });
-
-  return;
-}
-
 
   if (view === "genres") {
-    const genres = Object.keys(library.genres).sort((a,b)=>a.localeCompare(b));
-    const filtered = q ? genres.filter(g => g.toLowerCase().includes(q)) : genres;
 
-    filtered.forEach(gName => {
-      const albumsCount = Object.keys(library.genres[gName].albums ?? {}).length;
-      const tracksCount = Object.values(library.genres[gName].albums ?? {}).reduce((acc,a)=>acc + (a.tracks?.length ?? 0), 0);
-
-      listEl.appendChild(card({
-        title: gName,
-        sub: `${albumsCount} álbum(es) · ${tracksCount} canción(es)`,
-        pill: "Abrir",
-        onClick: () => {
-          selectedGenre = gName;
-          selectedAlbum = null;
-          view = "albums";
-          render();
-        }
-      }));
-    });
-
+    renderGenres(q);
     return;
+
   }
 
   if (view === "albums") {
-    if (!selectedGenre) {
-      // si el usuario no eligió género, mostramos todos los álbumes
-      const albums = [];
-      for (const [gName, g] of Object.entries(library.genres)) {
-        for (const [aName, a] of Object.entries(g.albums ?? {})) {
-          albums.push({ genre: gName, album: aName, cover: a.cover ?? "", tracks: a.tracks ?? [] });
-        }
-      }
-      const filtered = q
-        ? albums.filter(x => (x.album + " " + x.genre).toLowerCase().includes(q))
-        : albums;
 
-      filtered.sort((a,b)=> (a.album+b.genre).localeCompare(b.album+a.genre));
-
-filtered.forEach(x => {
-  listEl.appendChild(cardAlbum({
-    title: x.album,
-    sub: `${x.genre} · ${x.tracks.length} canción(es)`,
-    pill: "Abrir",
-    onClick: () => {
-      selectedGenre = x.genre;
-      selectedAlbum = x.album;
-      view = "songs";
-      render();
-    },
-    onDelete: () => deleteAlbum(x.genre, x.album)
-  }));
-});
-      return;
-    }
-
-    const g = library.genres[selectedGenre];
-    const albums = Object.keys(g.albums ?? {}).sort((a,b)=>a.localeCompare(b));
-    const filtered = q ? albums.filter(a => a.toLowerCase().includes(q)) : albums;
-
-    filtered.forEach(aName => {
-      const a = g.albums[aName];
-      listEl.appendChild(card({
-        title: aName,
-        sub: `${(a.tracks?.length ?? 0)} canción(es)`,
-        pill: "Ver",
-        onClick: () => {
-          selectedAlbum = aName;
-          view = "songs";
-          render();
-        }
-      }));
-    });
+    renderAlbums(q);   // ← AQUÍ se ejecuta
     return;
+
   }
 
-  if (view === "songs") {
-    // construir queue según contexto
-    let tracks = [];
-    if (selectedGenre && selectedAlbum && !normalize(searchInput.value)) {
-      const a = library.genres[selectedGenre]?.albums?.[selectedAlbum];
-      tracks = (a?.tracks ?? []).map(t => ({ ...t, genre: selectedGenre, album: selectedAlbum }));
-    } else {
-      tracks = allTracks();
-    }
+  renderSongs(q);
 
-    // buscar
-    if (q) {
-  tracks = tracks.filter(t => matchTrack(t, q));
-  } 
-
-    // orden suave
-    tracks.sort((a,b)=> (a.artist+a.album+a.title).localeCompare(b.artist+b.album+b.title));
-
-    queue = tracks;
-
-    tracks.forEach((t, idx) => {
-      listEl.appendChild(songRow(t, idx));
-    });
-
-    return;
-  }
 }
 
 
@@ -574,35 +556,53 @@ function card({title, sub, pill, onClick}) {
 }
 
 //
-function cardAlbum({ title, sub, pill, onClick, onDelete }) {
+function cardAlbum({ title, sub, pill, cover, onClick, onDelete }) {
+
   const div = document.createElement("div");
   div.className = "card album-card";
 
   div.innerHTML = `
-    <div class="row">
-      <div class="card-title">${escapeHtml(title)}</div>
-      <span class="pill">${escapeHtml(pill)}</span>
-    </div>
-    <div class="card-sub">${escapeHtml(sub)}</div>
+    <div class="album-cover">${cover ? "" : "♪"}</div>
 
-    <div class="album-actions">
-      <button type="button" class="album-del">Eliminar álbum</button>
+    <div class="album-info">
+
+      <div class="row">
+        <div class="card-title">${escapeHtml(title)}</div>
+        ${pill ? `<span class="pill">${escapeHtml(pill)}</span>` : ""}
+      </div>
+
+      <div class="card-sub">${escapeHtml(sub)}</div>
+
+      <div class="album-actions">
+        <button type="button" class="album-del">Eliminar álbum</button>
+      </div>
+
     </div>
   `;
 
-  // click principal abre
-  div.addEventListener("click", onClick);
+  const coverElLocal = div.querySelector(".album-cover");
 
-  // botón eliminar NO debe abrir
-  div.querySelector(".album-del").addEventListener("click", (e) => {
-    e.stopPropagation();
-    onDelete?.();
-  });
+  setCover(coverElLocal, cover || "");
+
+  if (onClick)
+    div.addEventListener("click", onClick);
+
+  const deleteBtn = div.querySelector(".album-del");
+
+  if (deleteBtn) {
+
+    deleteBtn.addEventListener("click", (event) => {
+
+      event.stopPropagation();
+      onDelete?.();
+
+    });
+
+  }
 
   return div;
+
 }
-
-
 // 
 
 

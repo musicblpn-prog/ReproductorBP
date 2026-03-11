@@ -101,6 +101,8 @@ const state = {
   lastPlaySource: "ui",
   mediaSessionReady: false,
   recoveringAudio: false,
+  gaplessTriggered: false,
+  nextSwapInProgress: false,
 };
 
 // ---------- Utils ----------
@@ -665,6 +667,59 @@ function preloadNextTrack() {
 
 }
 
+
+async function tryGaplessAdvance() {
+  if (state.nextSwapInProgress) return false;
+  if (!queue.length || currentIndex < 0) return false;
+  if (state.repeatMode === "one") return false;
+
+  const nextIndex = getNextIndex(1);
+  if (nextIndex < 0) return false;
+
+  const nextTrack = queue[nextIndex];
+  if (!nextTrack?.url) return false;
+
+  const nextSrc = toPlayableUrl(nextTrack.url);
+
+  state.nextSwapInProgress = true;
+
+  try {
+    currentIndex = nextIndex;
+
+    audio.pause();
+
+    if (audioPreload.src === nextSrc) {
+      audio.src = audioPreload.src;
+    } else {
+      audio.src = nextSrc;
+      audio.load();
+    }
+
+    audio.currentTime = 0;
+
+    updateNowPlayingUI(nextTrack);
+    syncPlayerState(nextTrack);
+    savePlaybackSession();
+
+    const ok = await attemptPlay(++state.playRequestId);
+
+    if (ok) {
+      preloadNextTrack();
+      return true;
+    }
+
+    return false;
+  } catch (e) {
+    console.debug("Gapless advance error:", e);
+    return false;
+  } finally {
+    state.nextSwapInProgress = false;
+    state.gaplessTriggered = false;
+  }
+}
+
+
+
 // ---------- Media Session ----------
 function updateMediaMetadata(track) {
   if (!("mediaSession" in navigator)) return;
@@ -758,6 +813,9 @@ async function loadTrackByIndex(index, { autoplay = true, preserveTime = false }
   const track = queue[currentIndex];
   const src = toPlayableUrl(track.url);
   const requestId = ++state.playRequestId;
+
+  state.gaplessTriggered = false;
+  state.nextSwapInProgress = false;
 
   state.isLoading = true;
   state.pendingResumeAfterLoad = false;
@@ -1543,59 +1601,62 @@ function bindAudioEvents() {
     await attemptPlay(state.playRequestId);
   });
 
-  audio.addEventListener("timeupdate", () => {
-    updateTimeUI();
-  });
+  audio.addEventListener("timeupdate", async () => {
+  updateTimeUI();
 
- audio.addEventListener("ended", async () => {
+  if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+  if (audio.paused) return;
+  if (state.repeatMode === "one") return;
+  if (state.gaplessTriggered) return;
+  if (state.nextSwapInProgress) return;
 
+  const remaining = audio.duration - audio.currentTime;
+
+  // dispara la transición un poco antes del final
+  if (remaining <= 0.35) {
+    state.gaplessTriggered = true;
+    await tryGaplessAdvance();
+  }
+});
+
+audio.addEventListener("ended", async () => {
+
+  if (state.nextSwapInProgress) return;
+  if (state.gaplessTriggered) return;
   if (state.isLoading) return;
 
   state.isLoading = true;
 
   try {
+    rebuildQueue();
 
     const nextIndex = getNextIndex(1);
 
-    // repeat one
     if (state.repeatMode === "one") {
-
       audio.currentTime = 0;
-
       await resume();
-
       return;
-
     }
 
-    // no hay siguiente canción
     if (nextIndex < 0) {
-
       pause({ byUser: false });
-
       audio.currentTime = 0;
-
       updateTimeUI();
-
       return;
-
     }
 
     await playFromQueue(nextIndex);
-
     render();
 
   } catch (e) {
-
     console.debug("Error avanzando canción:", e);
-
   } finally {
-
     state.isLoading = false;
-
+    state.gaplessTriggered = false;
   }
 
 });
+
 
   audio.addEventListener("error", () => {
     state.isLoading = false;

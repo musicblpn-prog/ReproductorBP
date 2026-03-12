@@ -71,6 +71,9 @@ const repeatBtn = document.getElementById("repeatBtn");
 
 // --------- State ----------
 let library = loadLibrary(); // {genres:{[name]:{albums:{[name]:{cover, tracks:[]}}}}}
+if (!library.collections["Favoritos"]) {
+  library.collections["Favoritos"] = [];
+}
 let view = "genres"; // genres | albums | songs | collections
 let queueContext = { type: "all" };
 // type: "all" | "genre" | "album" | "favorites" | "collectionSongs"
@@ -821,7 +824,8 @@ async function playFromQueue(index) {
   currentIndex = index;
   const t = queue[currentIndex];
 
-  audio.src = t.url;
+  audio.src = fixDropbox(t.url);
+audio.load();
   
   updateNowPlayingUI(t);
 
@@ -846,15 +850,21 @@ async function playFromQueue(index) {
     }
   }
 
-  try {
-    await audio.play();
-    isPlaying = true;
-    playBtn.textContent = "⏸";
-  } catch (err) {
-    console.log("Audio play error:", err);
-    isPlaying = false;
-    playBtn.textContent = "▶";
-  }
+try {
+
+  await audio.play();
+
+} catch (err) {
+
+  // iPhone a veces necesita esperar a que cargue
+  const once = () => {
+    audio.removeEventListener("canplay", once);
+    audio.play().catch(()=>{});
+  };
+
+  audio.addEventListener("canplay", once);
+
+}
 
   render();
 }
@@ -1110,32 +1120,54 @@ audio.addEventListener("ended", () => {
 
   if (!queue.length) return;
 
-  // 🔁 Repetir una sola canción
+  // repetir una canción
   if (repeatMode === "one") {
     playFromQueue(currentIndex);
     return;
   }
 
-  let next;
-
-  // 🔀 Si shuffle está activo
+  // shuffle inteligente
   if (isShuffle) {
-    next = Math.floor(Math.random() * queue.length);
-  } 
-  else {
-    // Normal secuencial
-    next = currentIndex >= queue.length - 1
-      ? 0
-      : currentIndex + 1;
+
+    if (!shuffleOrder.length || shuffleOrder.length !== queue.length) {
+      shuffleOrder = makeShuffleOrder(queue.length);
+      shufflePos = 0;
+    }
+
+    shufflePos++;
+
+    if (shufflePos >= shuffleOrder.length) {
+
+      if (repeatMode === "all") {
+        shuffleOrder = makeShuffleOrder(queue.length);
+        shufflePos = 0;
+      } else {
+        pause();
+        return;
+      }
+
+    }
+
+    playFromQueue(shuffleOrder[shufflePos]);
+    return;
+
   }
 
-  // 🚫 Si repeat está apagado y estamos en la última
-  if (repeatMode === "off" && currentIndex >= queue.length - 1 && !isShuffle) {
-    pause();
-    return;
+  // modo normal
+  let next = currentIndex + 1;
+
+  if (next >= queue.length) {
+
+    if (repeatMode === "all") next = 0;
+    else {
+      pause();
+      return;
+    }
+
   }
 
   playFromQueue(next);
+
 });
 
 vol.addEventListener("input", () => {
@@ -1143,6 +1175,34 @@ vol.addEventListener("input", () => {
   audio.volume = v;
  
 });
+
+
+audio.addEventListener("playing", () => {
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+  }
+
+});
+
+
+
+
+audio.addEventListener("pause", () => {
+
+  // si la pausa fue por otra app
+  if (!audio.ended) {
+
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "paused";
+    }
+
+  }
+
+});
+
+
+
 
 // Nav
 navGenres.onclick = () => { view = "genres"; selectedGenre = null; selectedAlbum = null; render(); };

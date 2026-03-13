@@ -237,12 +237,8 @@ body{
 
 
 /* =========================================
-   PLAYER
+   PLAYER BAR FIX (CORREGIDO)
 ========================================= */
-
-/* =========================
-   PLAYER BAR (mini player)
-========================= */
 
 .player {
 
@@ -251,27 +247,29 @@ body{
   left: 0;
   right: 0;
 
-  display: flex;
+  display: grid;
+  grid-template-columns: 160px 1fr 120px;
+
   align-items: center;
-  justify-content: space-between;
 
   padding: 10px 14px;
 
-  background: rgba(10,10,15,.65);
-  backdrop-filter: blur(25px);
+  background:
+    linear-gradient(
+      to top,
+      rgba(10,10,15,.95),
+      rgba(10,10,15,.65)
+    );
+
+  backdrop-filter: blur(20px);
 
   border-top: 1px solid rgba(255,255,255,.08);
 
-  gap: 10px;
-
   z-index: 50;
-
 }
 
 
-/* =========================
-   LEFT SIDE PLAYER
-========================= */
+/* LEFT */
 
 .np {
 
@@ -279,71 +277,80 @@ body{
   align-items: center;
   gap: 10px;
 
-  min-width: 140px;
+  overflow: hidden;
 
 }
 
-/* =========================
-   CENTER CONTROLS
-========================= */
+
+/* CENTER */
 
 .p-controls {
 
-  flex: 1;
-
   display: flex;
   flex-direction: column;
+
   align-items: center;
   justify-content: center;
 
+  gap: 4px;
+
+}
+
+
+/* RIGHT */
+
+.p-right {
+
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+
+}
+
+
+/* TIME BAR */
+
+.timebar {
+
+  width: 100%;
+
+  display: flex;
+  align-items: center;
   gap: 6px;
 
 }
 
 
-/* =========================
-   RIGHT SIDE
-========================= */
+/* COVER */
 
-.p-right {
+.cover {
 
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  width: 44px;
+  height: 44px;
 
-  min-width: 90px;
+  border-radius: 12px;
 
-}
-
-/* =========================
-   RIGHT SIDE
-========================= */
-
-.p-right {
-
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-
-  min-width: 90px;
+  background-size: cover;
+  background-position: center;
 
 }
 
-.cover{
-  width:44px;
-  height:44px;
-  border-radius:14px;
+
+/* TEXT */
+
+.np-title {
+
+  font-size: 13px;
+  font-weight: 600;
+
 }
 
-.np-title{
-  font-size:13px;
-}
+.np-sub {
 
-.np-sub{
-  font-size:12px;
-  color:var(--muted);
-}
+  font-size: 12px;
+  color: var(--muted);
 
+}
 
 /* =========================================
    NOW PLAYING / FULL PLAYER
@@ -870,16 +877,3 @@ input{
 
 }
 
-.player{
-
-  background:
-
-    linear-gradient(
-      to top,
-      rgba(10,10,15,.95),
-      rgba(10,10,15,.65)
-    );
-
-  backdrop-filter:blur(20px);
-
-}

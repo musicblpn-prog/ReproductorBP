@@ -20,6 +20,9 @@
 
       <div class="top-actions">
         <button id="btnAdd" class="btn primary" type="button">Agregar</button>
+       <button id="btnExport" class="btnGlass small">Exportar</button>
+       <button id="btnImport" class="btnGlass small">Importar</button>
+       <input type="file" id="fileImport" accept=".json" style="display:none">
       </div>
     </header>
 
@@ -150,6 +153,8 @@
 
 <div id="nowPlaying" class="now-playing np-hidden">
   <div class="np-header">
+    <div id="npBg" class="now-playing-bg"></div>
+    <div class="now-playing-overlay"></div>
     <button id="closeNowPlaying">⬇</button>
     <span>Reproduciendo</span>
   </div>

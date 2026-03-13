@@ -47,6 +47,9 @@ const modal = document.getElementById("modal");
 
 const btnAdd = document.getElementById("btnAdd");
 const btnAdd2 = document.getElementById("btnAdd2");
+const btnExport = document.getElementById("btnExport");
+const btnImport = document.getElementById("btnImport");
+const fileImport = document.getElementById("fileImport");
 
 const closeModal = document.getElementById("closeModal");
 const cancelSong = document.getElementById("cancelSong");
@@ -66,6 +69,7 @@ const inCover = document.getElementById("inCover");
 
 const nowPlaying = document.getElementById("nowPlaying");
 const closeNowPlaying = document.getElementById("closeNowPlaying");
+const npBg = document.getElementById("npBg");
 
 const bigTitle = document.getElementById("bigTitle");
 const bigArtist = document.getElementById("bigArtist");
@@ -85,6 +89,8 @@ const favFullBtn = document.getElementById("favFullBtn");
 
 const shuffleBtn = document.getElementById("shuffleBtn");
 const repeatBtn = document.getElementById("repeatBtn");
+
+
 
 
 // PRELOAD AUDIO
@@ -1038,44 +1044,108 @@ function deleteAlbum(genreName, albumName) {
 // =====================================================
 
 function updateNowPlayingUI(track) {
+
     if (!track) return;
 
+
+    // =========================
     // MINI PLAYER
+    // =========================
+
     npTitle.textContent = track.title || "Nada reproduciendo";
-    npSub.textContent = `${track.artist || ""} · ${track.genre || ""} · ${track.album || ""}`;
+
+    npSub.textContent =
+        `${track.artist || ""} · ${track.genre || ""} · ${track.album || ""}`;
+
 
     if (track.cover) {
+
         coverEl.style.backgroundImage = `url("${track.cover}")`;
         coverEl.style.backgroundSize = "cover";
         coverEl.style.backgroundPosition = "center";
         coverEl.textContent = "";
+
     } else {
+
         coverEl.style.backgroundImage = "";
         coverEl.textContent = "♪";
+
     }
 
+
+
+    // =========================
     // FULL PLAYER
+    // =========================
+
     bigTitle.textContent = track.title || "—";
-    bigArtist.textContent = `${track.artist || "—"} · ${track.genre || "—"} · ${track.album || "—"}`;
+
+    bigArtist.textContent =
+        `${track.artist || "—"} · ${track.genre || "—"} · ${track.album || "—"}`;
+
 
     if (track.cover) {
+
+        // animación suave
+        bigCover.classList.add("change");
+
+        setTimeout(() => {
+            bigCover.classList.remove("change");
+        }, 200);
+
+
         bigCover.style.backgroundImage = `url("${track.cover}")`;
         bigCover.style.backgroundSize = "cover";
         bigCover.style.backgroundPosition = "center";
         bigCover.textContent = "";
+
     } else {
+
         bigCover.style.backgroundImage = "";
         bigCover.textContent = "♪";
+
     }
+
+
+
+    // =========================
+    // FAVORITOS
+    // =========================
 
     if (favFullBtn) {
-        favFullBtn.textContent = favorites.has(track.id) ? "❤️" : "🤍";
-        favFullBtn.classList.toggle("active", favorites.has(track.id));
+
+        const isFav = favorites.has(track.id);
+
+        favFullBtn.textContent = isFav ? "❤️" : "🤍";
+
+        favFullBtn.classList.toggle("active", isFav);
+
     }
 
+
+
+    // =========================
+    // SPEED
+    // =========================
+
     if (speedControl) {
+
         speedControl.value = String(audio.playbackRate || 1);
+
     }
+
+
+
+    // =========================
+    // FONDO DINÁMICO
+    // =========================
+
+    if (npBg && track.cover) {
+
+        npBg.style.backgroundImage = `url("${track.cover}")`;
+
+    }
+
 }
 
 
@@ -1813,6 +1883,88 @@ searchInput.addEventListener("input", () => {
 
 
 // =====================================================
+// EXPORTAR BIBLIOTECA
+// =====================================================
+
+btnExport?.addEventListener("click", () => {
+
+    const data = {
+        library: library,
+        favorites: [...favorites]
+    };
+
+    const json = JSON.stringify(data, null, 2);
+
+    const blob = new Blob([json], {
+        type: "application/json"
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mi_music_backup.json";
+
+    document.body.appendChild(a);
+    a.click();
+
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+});
+
+// =====================================================
+// IMPORTAR BIBLIOTECA
+// =====================================================
+
+btnImport?.addEventListener("click", () => {
+    fileImport.click();
+});
+
+
+fileImport?.addEventListener("change", (e) => {
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(event) {
+
+        try {
+
+            const data = JSON.parse(event.target.result);
+
+            if (data.library) {
+                library = data.library;
+                saveLibrary();
+            }
+
+            if (data.favorites) {
+                favorites = new Set(data.favorites);
+                saveFavorites();
+            }
+
+            alert("Biblioteca importada correctamente");
+
+            render();
+
+        } catch (err) {
+
+            alert("Error al importar archivo");
+
+        }
+
+    };
+
+    reader.readAsText(file);
+
+});
+
+//-----
+
+
+// =====================================================
 // MODAL
 // =====================================================
 
@@ -1921,6 +2073,7 @@ saveSong.onclick = () => {
     closeModalFn();
     render();
 };
+
 
 
 // =====================================================

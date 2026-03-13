@@ -240,28 +240,92 @@ body{
    PLAYER
 ========================================= */
 
-.player{
+/* =========================
+   PLAYER BAR (mini player)
+========================= */
 
-  position:fixed;
-  left:0;
-  right:0;
-  bottom:0;
+.player {
 
-  display:grid;
-  grid-template-columns:320px 1fr 220px;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
 
-  padding:12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 
-  border-top:1px solid var(--line);
+  padding: 10px 14px;
 
-  background:
-    linear-gradient(
-      to top,
-      rgba(10,10,15,.95),
-      rgba(10,10,15,.65)
-    );
+  background: rgba(10,10,15,.65);
+  backdrop-filter: blur(25px);
 
-  backdrop-filter:blur(20px);
+  border-top: 1px solid rgba(255,255,255,.08);
+
+  gap: 10px;
+
+  z-index: 50;
+
+}
+
+
+/* =========================
+   LEFT SIDE PLAYER
+========================= */
+
+.np {
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  min-width: 140px;
+
+}
+
+/* =========================
+   CENTER CONTROLS
+========================= */
+
+.p-controls {
+
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+
+}
+
+
+/* =========================
+   RIGHT SIDE
+========================= */
+
+.p-right {
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  min-width: 90px;
+
+}
+
+/* =========================
+   RIGHT SIDE
+========================= */
+
+.p-right {
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  min-width: 90px;
 
 }
 

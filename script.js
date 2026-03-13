@@ -17,6 +17,7 @@ const vol = document.getElementById("vol");
 const tCur = document.getElementById("tCur");
 const tDur = document.getElementById("tDur");
 
+
 const npTitle = document.getElementById("npTitle");
 const npSub = document.getElementById("npSub");
 const coverEl = document.getElementById("cover");
@@ -62,7 +63,8 @@ const speedControl = document.getElementById("speedControl");
 const favFullBtn = document.getElementById("favFullBtn");
 const shuffleBtn = document.getElementById("shuffleBtn");
 const repeatBtn = document.getElementById("repeatBtn");
-
+const audioPreload = new Audio();
+audioPreload.preload = "auto";
 
 
 
@@ -159,6 +161,36 @@ function makeShuffleOrder(n){
   return arr;
 }
 //
+function preloadNextTrack(){
+
+  if(!queue.length) return;
+
+  let nextIndex;
+
+  if(isShuffle){
+    nextIndex = Math.floor(Math.random() * queue.length);
+  } else {
+    nextIndex = currentIndex + 1;
+    if(nextIndex >= queue.length) nextIndex = 0;
+  }
+
+  const nextTrack = queue[nextIndex];
+  if(!nextTrack) return;
+
+  audioPreload.src = fixDropbox(nextTrack.url);
+}
+
+
+function fixDropbox(url){
+
+  if(!url.includes("dropbox.com")) return url;
+
+  return url
+    .replace("www.dropbox.com","dl.dropboxusercontent.com")
+    .replace("&raw=1","")
+    .replace(/&st=[^&]+/,"");
+}
+
 
 
 function buildQueueForCurrentView(){
@@ -825,7 +857,8 @@ async function playFromQueue(index) {
   const t = queue[currentIndex];
 
   audio.src = fixDropbox(t.url);
-audio.load();
+  preloadNextTrack();
+  audio.load();
   
   updateNowPlayingUI(t);
 

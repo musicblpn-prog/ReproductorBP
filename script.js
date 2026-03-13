@@ -1293,22 +1293,6 @@ function setupMediaSession(track) {
             nextBtn?.click();
         });
 
-        try {
-            navigator.mediaSession.setActionHandler("seekbackward", (details) => {
-                const offset = details?.seekOffset || 10;
-                audio.currentTime = Math.max(0, audio.currentTime - offset);
-                updatePositionState();
-            });
-        } catch {}
-
-        try {
-            navigator.mediaSession.setActionHandler("seekforward", (details) => {
-                const offset = details?.seekOffset || 10;
-                const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-                audio.currentTime = Math.min(duration || audio.currentTime + offset, audio.currentTime + offset);
-                updatePositionState();
-            });
-        } catch {}
 
         try {
             navigator.mediaSession.setActionHandler("seekto", (details) => {

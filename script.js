@@ -1883,7 +1883,7 @@ searchInput.addEventListener("input", () => {
 
 
 // =====================================================
-// EXPORTAR BIBLIOTECA
+// EXPORTAR BIBLIOTECA (FIX iPhone / Safari)
 // =====================================================
 
 btnExport?.addEventListener("click", () => {
@@ -1902,23 +1902,34 @@ btnExport?.addEventListener("click", () => {
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
+
     a.href = url;
     a.download = "mi_music_backup.json";
 
     document.body.appendChild(a);
+
     a.click();
 
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+    }, 100);
 
 });
 
 // =====================================================
-// IMPORTAR BIBLIOTECA
+// IMPORTAR BIBLIOTECA (FIX iPhone / Safari / PWA)
 // =====================================================
 
 btnImport?.addEventListener("click", () => {
+
+    if (!fileImport) return;
+
+    fileImport.value = ""; // IMPORTANTE
     fileImport.click();
+
 });
 
 
@@ -1935,21 +1946,40 @@ fileImport?.addEventListener("change", (e) => {
 
             const data = JSON.parse(event.target.result);
 
+
+            // ---------- LIBRARY ----------
+
             if (data.library) {
+
                 library = data.library;
+
+                if (!library.collections) {
+                    library.collections = {};
+                }
+
                 saveLibrary();
+
             }
 
+
+            // ---------- FAVORITES ----------
+
             if (data.favorites) {
+
                 favorites = new Set(data.favorites);
+
                 saveFavorites();
+
             }
+
 
             alert("Biblioteca importada correctamente");
 
             render();
 
         } catch (err) {
+
+            console.error(err);
 
             alert("Error al importar archivo");
 

@@ -1,10 +1,8 @@
 // =====================================================
 // MI MUSIC PLAYER
-// Base reorganizada y comentada
-// Parte 1 / 3
 // =====================================================
-
-
+//=====================================================
+// HECHO CON AMOR ATT JAZUS
 // =====================================================
 // CONFIG / STORAGE KEYS
 // =====================================================
@@ -308,37 +306,6 @@ function makeShuffleOrder(n) {
     }
 
     return arr;
-
-}
-
-
-// =====================================================
-// PRELOAD NEXT TRACK
-// =====================================================
-
-function preloadNextTrack() {
-
-    if (!queue.length) return;
-
-    let nextIndex;
-
-    if (isShuffle) {
-
-        nextIndex = Math.floor(Math.random() * queue.length);
-
-    } else {
-
-        nextIndex = currentIndex + 1;
-
-        if (nextIndex >= queue.length) nextIndex = 0;
-
-    }
-
-    const nextTrack = queue[nextIndex];
-
-    if (!nextTrack) return;
-
-    audioPreload.src = fixDropbox(nextTrack.url);
 
 }
 
@@ -1556,9 +1523,14 @@ async function forceResumePlayback() {
 
 
 async function recoverPlaybackIfNeeded() {
+
     if (recoveringAudio) return false;
+
     if (!audio.src) return false;
-    if (!audio.paused) return true;
+
+    if (!audio.paused && audio.readyState >= 2 && !audio.muted && audio.volume > 0) return true;
+
+
 
     recoveringAudio = true;
 
@@ -1595,7 +1567,60 @@ async function playFromQueue(index) {
 
     preloadUpcomingTrack();
 
-    const played = await forceResumePlayback();
+
+    setTimeout(() => {
+      preloadUpcomingTrack();
+    }, 500);
+
+
+
+
+    let played = await forceResumePlayback();
+
+    if (!played) {
+
+     // intento usando preload
+        try {
+
+         if (audioPreload.src) {
+
+            audio.removeAttribute("src");
+            audio.load();
+
+            audio.src = audioPreload.src;
+            audio.load();
+            
+             // pequeño delay para iOS
+            await new Promise(r => setTimeout(r, 80));
+
+            played = await forceResumePlayback();
+
+          }
+
+    } catch {}
+
+    }
+
+
+    if (!played && currentIndex >= 0 && queue[currentIndex]) {
+
+    try {
+
+        const t = queue[currentIndex];
+
+        audio.removeAttribute("src");
+        audio.load();
+
+        audio.src = fixDropbox(t.url);
+        audio.load();
+
+        await new Promise(r => setTimeout(r, 80));
+
+        await forceResumePlayback();
+
+    } catch {}
+
+}
 
     if (!played) {
         const retry = async () => {
@@ -1814,6 +1839,34 @@ audio.addEventListener("timeupdate", () => {
 });
 
 
+let lastTimeCheck = 0;
+let lastTimeValue = 0;
+
+audio.addEventListener("timeupdate", async () => {
+
+    const now = Date.now();
+
+    if (now - lastTimeCheck < 2000) return;
+
+    lastTimeCheck = now;
+
+    if (!audio.paused) {
+
+        if (Math.abs(audio.currentTime - lastTimeValue) < 0.01) {
+
+            await recoverPlaybackIfNeeded();
+
+        }
+
+        lastTimeValue = audio.currentTime;
+
+    }
+
+});
+
+
+
+
 audio.addEventListener("playing", () => {
     isPlaying = true;
     syncPlayPauseButtons();
@@ -1882,16 +1935,59 @@ audio.addEventListener("error", async () => {
 });
 
 
-audio.addEventListener("stalled", () => {
+
+audio.addEventListener("stalled", async () => {
+
     console.log("Audio stalled");
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
 });
 
-audio.addEventListener("suspend", () => {
+
+
+
+audio.addEventListener("suspend", async () => {
+
     console.log("Audio suspend");
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
 });
 
-audio.addEventListener("waiting", () => {
+
+
+
+
+
+audio.addEventListener("waiting", async () => {
+
     console.log("Audio waiting");
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
+});
+
+audio.addEventListener("canplaythrough", async () => {
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
 });
 
 
@@ -1911,10 +2007,112 @@ document.addEventListener("visibilitychange", async () => {
 });
 
 
+window.addEventListener("online", async () => {
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
+});
+
+
+
 window.addEventListener("focus", async () => {
     if (wasPlayingBeforeHide && audio.paused) {
         await recoverPlaybackIfNeeded();
     }
+});
+
+
+// =====================================================
+// FIX EXTRA iOS BACKGROUND / PWA / SAFARI
+// =====================================================
+
+// cuando la página vuelve desde background
+window.addEventListener("pageshow", async () => {
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
+});
+
+
+// cuando iOS congela la página
+window.addEventListener("pagehide", () => {
+
+    wasPlayingBeforeHide = !audio.paused;
+
+});
+
+
+// cuando vuelve el foco real (Safari / PWA)
+window.addEventListener("blur", () => {
+
+    wasPlayingBeforeHide = !audio.paused;
+
+});
+
+
+window.addEventListener("focus", async () => {
+
+    if (wasPlayingBeforeHide && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
+});
+
+
+// cuando cambia conexión (muy importante en iPhone)
+window.addEventListener("offline", () => {
+
+    wasPlayingBeforeHide = !audio.paused;
+
+});
+
+
+window.addEventListener("online", async () => {
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
+});
+
+
+// cuando el navegador decide pausar audio en background
+document.addEventListener("resume", async () => {
+
+    if (!audio.paused && currentIndex >= 0) {
+
+        await recoverPlaybackIfNeeded();
+
+    }
+
+});
+
+
+// iOS a veces dispara esto cuando vuelve del lockscreen
+document.addEventListener("visibilitychange", async () => {
+
+    if (!document.hidden) {
+
+        if (!audio.paused && currentIndex >= 0) {
+
+            await recoverPlaybackIfNeeded();
+
+        }
+
+    }
+
 });
 
 
@@ -1977,6 +2175,9 @@ searchInput.addEventListener("input", () => {
 
     render();
 });
+
+
+
 
 
 // =====================================================

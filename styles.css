@@ -116,9 +116,10 @@ body{
 
 .layout{
   display:grid;
-  grid-template-columns:290px 1fr;
+  grid-template-columns:260px minmax(0,1fr);
   gap:14px;
   padding:8px 18px 0;
+  align-items:start;
 }
 
 
@@ -127,28 +128,17 @@ body{
 ========================================= */
 
 .sidebar{
-
-  background:
-  linear-gradient(
-    180deg,
-    rgba(255,255,255,.06),
-    rgba(255,255,255,.03)
-  );
-
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
   border:1px solid var(--line);
-
   border-radius:18px;
-
   padding:14px;
-
   backdrop-filter:blur(10px);
-
+  width:100%;
+  min-width:0;
   height:calc(100vh - 140px);
-
   position:sticky;
   top:10px;
-
-}
+} 
 
 .search input{
   width:100%;
@@ -204,24 +194,19 @@ body{
 ========================================= */
 
 .content{
-
-  background:
-  linear-gradient(
-    180deg,
-    rgba(255,255,255,.06),
-    rgba(255,255,255,.03)
-  );
-
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
   border:1px solid var(--line);
-
   border-radius:18px;
-
   padding:14px;
-
   backdrop-filter:blur(10px);
-
+  width:100%;
+  min-width:0;
   min-height:calc(100vh - 140px);
+}
 
+
+.sidebar{
+  width:100%;
 }
 
 
@@ -565,34 +550,67 @@ body{
    iPHONE FIX
 ========================================= */
 
-@media(max-width:520px){
+@media (max-width: 520px){
 
-  .player{
+  .topbar{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:12px;
+  }
+
+  .top-actions{
+    width:100%;
+    display:flex;
+    flex-wrap:wrap;
     gap:8px;
   }
 
-  .cover{
-    width:42px;
-    height:42px;
+  .layout{
+    grid-template-columns:1fr;
+    gap:12px;
+    padding:8px 12px 0;
   }
 
-  .p-controls{
-    gap:6px 10px;
+  .sidebar{
+    position:static;
+    top:auto;
+    height:auto;
   }
 
-  .timebar{
-
-    grid-template-columns:
-      36px
-      minmax(80px,1fr)
-      36px;
-
+  .content{
+    min-height:auto;
   }
 
-  #vol{
-    width:160px;
+  .grid{
+    grid-template-columns:1fr;
   }
 
+  .song-cover{
+    width:54px;
+    height:54px;
+  }
+
+  .card{
+    padding-bottom:56px;
+  }
+
+  .play-btn{
+    position:absolute;
+    bottom:12px;
+    left:12px;
+  }
+
+  .fav-btn{
+    position:absolute;
+    bottom:12px;
+    right:54px;
+  }
+
+  .delete-btn{
+    position:absolute;
+    bottom:12px;
+    right:12px;
+  }
 }
 
 /* =========================================
@@ -991,4 +1009,10 @@ body{
 .top-actions{
   display:flex;
   gap:6px;
+}
+
+.content > .content {
+  border:none;
+  background:none;
+  padding:0;
 }

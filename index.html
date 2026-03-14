@@ -245,71 +245,54 @@
      MODAL AGREGAR CANCIÓN
 ===================================== -->
 
-<div id="modal" class="modal modal-hidden">
-
-  <div class="modal-card">
-
-    <div class="modal-head">
-
-      <h2>Agregar canción</h2>
-
-      <button id="closeModal" class="btn icon">✕</button>
-
-    </div>
-
-
-    <div class="form">
-
-      <label>
-        Nombre
-        <input id="inTitle" type="text">
-      </label>
-
-      <label>
-        Artista
-        <input id="inArtist" type="text">
-      </label>
-
-      <label>
-        Género
-        <input id="inGenre" type="text">
-      </label>
-
-      <label>
-        Álbum
-        <input id="inAlbum" type="text">
-      </label>
-
-      <label>
-        URL MP3
-        <input id="inUrl" type="url">
-      </label>
-
-      <label>
-        Cover
-        <input id="inCover" type="url">
-      </label>
-
-
-      <div class="form-actions">
-
-        <button id="saveSong" class="btn primary">
-          Guardar
-        </button>
-
-        <button id="cancelSong" class="btn">
-          Cancelar
-        </button>
-
+  <div id="modal" class="modal modal-hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Agregar canción</h2>
+        <button id="closeModal" class="btn icon" type="button" aria-label="Cerrar">✕</button>
       </div>
 
-      <div id="msg" class="msg hidden"></div>
+      <div class="form">
+        <label>
+          Nombre
+          <input id="inTitle" type="text" placeholder="Ej: Numb" maxlength="80" />
+        </label>
 
+        <label>
+          Artista
+          <input id="inArtist" type="text" placeholder="Ej: Linkin Park" maxlength="80" />
+        </label>
+
+        <label>
+          Género
+          <input id="inGenre" type="text" placeholder="Ej: Rock" maxlength="40" />
+        </label>
+
+        <label>
+          Álbum
+          <input id="inAlbum" type="text" placeholder="Ej: Meteora" maxlength="60" />
+        </label>
+
+        <label>
+          Link MP3 (Drive directo)
+          <input id="inUrl" type="url" placeholder="https://drive.google.com/uc?export=download&id=..." />
+          <small class="small">Tip: pega un link “view” y te lo convierto automáticamente.</small>
+        </label>
+
+        <label>
+          Portada (opcional, URL imagen)
+          <input id="inCover" type="url" placeholder="https://.../cover.jpg" />
+        </label>
+
+        <div class="form-actions">
+          <button id="saveSong" class="btn primary" type="button">Guardar</button>
+          <button id="cancelSong" class="btn" type="button">Cancelar</button>
+        </div>
+
+        <div id="msg" class="msg hidden"></div>
+      </div>
     </div>
-
   </div>
-
-</div>
 
 <!-- =====================================
      FULL PLAYER
@@ -397,8 +380,3 @@
 </div>
 
 
-<script src="script.js" defer></script>
-
-</div>
-</body>
-</html>

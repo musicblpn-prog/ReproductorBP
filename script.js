@@ -1455,10 +1455,20 @@ function updatePositionState() {
 // =====================================================
 
 function setAudioSource(track) {
+
     const src = fixDropbox(track.url || "");
     if (!src) return false;
 
-    audio.pause();
+    try {
+        audio.pause();
+    } catch {}
+
+    // FIX iOS
+    try {
+        audio.removeAttribute("src");
+        audio.load();
+    } catch {}
+
     audio.src = src;
     audio.load();
 
@@ -1471,10 +1481,21 @@ function setAudioSource(track) {
 // =====================================================
 
 async function safePlayAudio() {
+
     const myRequest = ++playRequestId;
 
     try {
-        await audio.play();
+
+        // FIX iOS → asegurar que audio esté listo
+        if (audio.readyState < 2) {
+            try { audio.load(); } catch {}
+        }
+
+        const playPromise = audio.play();
+
+        if (playPromise !== undefined) {
+            await playPromise;
+        }
 
         if (myRequest !== playRequestId) return false;
 
@@ -1485,7 +1506,15 @@ async function safePlayAudio() {
         }
 
         return true;
+
     } catch (err) {
+
+        // FIX extra para iPhone
+        try {
+            audio.pause();
+            audio.currentTime = audio.currentTime || 0;
+        } catch {}
+
         return false;
     }
 }
@@ -1600,9 +1629,20 @@ function pause(userInitiated = false) {
 
 
 async function resume() {
+
+    if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
+        setAudioSource(queue[currentIndex]);
+    }
+
+    // FIX iOS
+    if (audio.readyState < 2) {
+        try { audio.load(); } catch {}
+    }
+
     const ok = await forceResumePlayback();
 
     isPlaying = ok;
+
     syncPlayPauseButtons();
 
     if (!ok) {

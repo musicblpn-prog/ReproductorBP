@@ -540,18 +540,36 @@ function setCrumbs() {
         }
     }
 
-    parts.forEach((part, index) => {
-        const span = document.createElement("span");
-        span.className = "crumb" + (index === parts.length - 1 ? " strong" : "");
-        span.textContent = part.label;
+parts.forEach((part, index) => {
 
-        if (part.click && index !== parts.length - 1) {
-            span.style.cursor = "pointer";
-            span.onclick = part.click;
-        }
+    const span = document.createElement("span");
 
-        crumbsEl.appendChild(span);
-    });
+    span.className = "crumb" + (index === parts.length - 1 ? " strong" : "");
+
+    span.textContent = part.label;
+
+    if (part.click && index !== parts.length - 1) {
+        span.style.cursor = "pointer";
+        span.onclick = part.click;
+    }
+
+    crumbsEl.appendChild(span);
+
+
+    //  SEPARADOR VISUAL
+    if (index < parts.length - 1) {
+
+        const sep = document.createElement("span");
+
+        sep.className = "crumb-sep";
+
+        sep.textContent = " / ";
+
+        crumbsEl.appendChild(sep);
+
+    }
+
+});
 }
 
 
@@ -922,7 +940,7 @@ function songRow(track, idx) {
     }
 
     const favBtn = div.querySelector(".fav-btn");
-    
+
 //Music Day
 
 const dayBtn = div.querySelector(".day-btn");

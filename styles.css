@@ -1182,21 +1182,43 @@ body{
    MODAL FIX
 ========================================= */
 .modal{
+
   position: fixed;
+
   inset: 0;
+
   background: rgba(0,0,0,.65);
+
   display:flex;
-  align-items:center;
+
+  align-items:flex-start; /*  importante */
+
   justify-content:center;
-  padding: 18px;
+
+  padding: 40px 18px 140px 18px; /*  espacio abajo para el player */
+
+  overflow-y:auto; /*  permite scroll */
+
 }
+
 .modal-card{
+
   width: min(520px, 100%);
+
   border-radius: 18px;
+
   border: 1px solid var(--line);
+
   background: rgba(19,19,32,.92);
+
   backdrop-filter: blur(12px);
+
   padding: 14px;
+
+  margin-top: 20px; /*  nuevo */
+
+  margin-bottom: 20px; /*  nuevo */
+
 }
 .modal-head{ display:flex; align-items:center; justify-content:space-between; }
 .modal-head h2{ margin:0; font-size: 16px; }
@@ -1222,7 +1244,7 @@ input{
   font-size: 12px;
 }
 
-
+/*Icono del sol */
 .day-btn {
 
     cursor: pointer;
@@ -1244,6 +1266,32 @@ input{
 .day-btn.active {
 
     color: gold;
+
+}
+
+/* Separador bonito*/ 
+
+.crumb-sep{
+
+    opacity:0.6;
+
+    margin:0 4px;
+
+    font-weight:300;
+
+}
+
+.crumb{
+
+    font-weight:500;
+
+}
+
+.crumb.strong{
+
+    font-weight:700;
+
+    color:white;
 
 }
 

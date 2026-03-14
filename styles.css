@@ -54,6 +54,7 @@ body{
 }
 
 
+
 /* =========================================
    TOP BAR
 ========================================= */
@@ -1177,90 +1178,72 @@ body{
   }
 }
 
-
 /* =========================================
    MODAL FIX
 ========================================= */
-
 .modal{
-
-  position:fixed;
-
-  top:0;
-  left:0;
-  right:0;
-  bottom:0;
-
-  z-index:99999;
-
-  background:rgba(0,0,0,.65);
-
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
   display:flex;
-
   align-items:center;
   justify-content:center;
-
-  padding:18px;
-
+  padding: 18px;
 }
-
-
 .modal-card{
+  width: min(520px, 100%);
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(19,19,32,.92);
+  backdrop-filter: blur(12px);
+  padding: 14px;
+}
+.modal-head{ display:flex; align-items:center; justify-content:space-between; }
+.modal-head h2{ margin:0; font-size: 16px; }
 
-  width:min(520px,100%);
-
-  border-radius:18px;
-
-  border:1px solid rgba(255,255,255,.12);
-
-  background:rgba(20,20,30,.95);
-
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-
-  padding:16px;
-
-  box-shadow:
-    0 20px 60px rgba(0,0,0,.6);
-
+.form{ margin-top: 10px; display:flex; flex-direction:column; gap: 10px; }
+label{ display:flex; flex-direction:column; gap:6px; color: var(--muted); font-size: 12px; }
+input{
+  padding: 12px 12px;
+  border-radius: 14px;
+  border:1px solid var(--line);
+  background: rgba(0,0,0,.25);
+  color: var(--text);
+  outline:none;
+}
+.small{ color: var(--muted); opacity:.9; }
+.form-actions{ display:flex; gap: 10px; margin-top: 6px; }
+.msg{
+  border:1px solid rgba(255,45,85,.35);
+  background: rgba(255,45,85,.12);
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 12px;
 }
 
 
-.modal-head{
+.day-btn {
 
-  display:flex;
+    cursor: pointer;
 
-  justify-content:space-between;
+    font-size: 18px;
 
-  align-items:center;
+    margin-left: 6px;
 
-  margin-bottom:10px;
-
-}
-
-
-.form{
-
-  display:flex;
-
-  flex-direction:column;
-
-  gap:10px;
+    transition: 0.2s;
 
 }
 
+.day-btn:hover {
 
-.form-actions{
-
-  display:flex;
-
-  gap:10px;
-
-  margin-top:10px;
+    transform: scale(1.2);
 
 }
 
+.day-btn.active {
 
-.modal-hidden{
-  display:none !important;
+    color: gold;
+
 }
+

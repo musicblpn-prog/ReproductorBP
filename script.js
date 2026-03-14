@@ -11,6 +11,7 @@
 
 const LS_KEY = "mi_music_library_v1";
 const LS_FAV = "mi_music_favorites_v1";
+const LS_DAY = "mi_music_day_v1";
 
 
 // =====================================================
@@ -92,7 +93,6 @@ const repeatBtn = document.getElementById("repeatBtn");
 
 
 
-
 // PRELOAD AUDIO
 
 const audioPreload = new Audio();
@@ -104,10 +104,9 @@ audioPreload.preload = "auto";
 // =====================================================
 
 let library = loadLibrary();
+library.collections ??= {};
 
-if (!library.collections["Favoritos"]) {
-    library.collections["Favoritos"] = [];
-}
+library.collections["Music Day"] ??= [];
 
 let favorites = loadFavorites();
 
@@ -204,6 +203,15 @@ function loadFavorites() {
 
     }
 
+}
+
+// MUSIC DAY 
+
+function saveMusicDay() {
+  localStorage.setItem(
+    LS_DAY,
+    JSON.stringify([...musicDay])
+  );
 }
 
 
@@ -895,6 +903,9 @@ function songRow(track, idx) {
                 <div class="row" style="margin-top:8px;">
                     <span class="pill play-btn">▶</span>
                     <span class="fav-btn">${favorites.has(track.id) ? "❤️" : "🤍"}</span>
+                    <span class="day-btn">
+        ${(library.collections["Music Day"] ?? []).includes(track.id) ? "🌞" : "☀️"}
+    </span>
                     <span class="delete-btn">🗑</span>
                 </div>
             </div>
@@ -911,9 +922,37 @@ function songRow(track, idx) {
     }
 
     const favBtn = div.querySelector(".fav-btn");
+    
+//Music Day
 
+const dayBtn = div.querySelector(".day-btn");
+
+dayBtn.onclick = (e) => {
+
+    e.stopPropagation();
+
+    const arr = library.collections["Music Day"] ?? [];
+
+    const i = arr.indexOf(track.id);
+
+    if (i >= 0) {
+        arr.splice(i, 1);
+    } else {
+        arr.push(track.id);
+    }
+
+    library.collections["Music Day"] = arr;
+
+    saveLibrary();
+
+    render();
+
+};
+
+//
     favBtn.classList.toggle("active", favorites.has(track.id));
 
+    
     favBtn.onclick = (e) => {
         e.stopPropagation();
         toggleFavorite(track);

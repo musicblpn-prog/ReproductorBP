@@ -49,6 +49,10 @@ body{
   display:none !important;
 }
 
+.modal-hidden{
+  display:none !important;
+}
+
 
 /* =========================================
    TOP BAR
@@ -672,9 +676,7 @@ body{
   pointer-events:none;
 }
 
-.modal-hidden{
-  display:none !important;
-}
+
 
 
 /* =========================================
@@ -1173,4 +1175,92 @@ body{
     color:#fff;
     font-size:16px;
   }
+}
+
+
+/* =========================================
+   MODAL FIX
+========================================= */
+
+.modal{
+
+  position:fixed;
+
+  top:0;
+  left:0;
+  right:0;
+  bottom:0;
+
+  z-index:99999;
+
+  background:rgba(0,0,0,.65);
+
+  display:flex;
+
+  align-items:center;
+  justify-content:center;
+
+  padding:18px;
+
+}
+
+
+.modal-card{
+
+  width:min(520px,100%);
+
+  border-radius:18px;
+
+  border:1px solid rgba(255,255,255,.12);
+
+  background:rgba(20,20,30,.95);
+
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+
+  padding:16px;
+
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.6);
+
+}
+
+
+.modal-head{
+
+  display:flex;
+
+  justify-content:space-between;
+
+  align-items:center;
+
+  margin-bottom:10px;
+
+}
+
+
+.form{
+
+  display:flex;
+
+  flex-direction:column;
+
+  gap:10px;
+
+}
+
+
+.form-actions{
+
+  display:flex;
+
+  gap:10px;
+
+  margin-top:10px;
+
+}
+
+
+.modal-hidden{
+  display:none !important;
 }

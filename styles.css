@@ -45,6 +45,10 @@ body{
   padding-bottom:110px;
 }
 
+.hidden{
+  display:none !important;
+}
+
 
 /* =========================================
    TOP BAR
@@ -239,6 +243,8 @@ body{
 
   transition:.12s;
 
+  position:relative;
+
 }
 
 .card:hover{
@@ -410,18 +416,20 @@ body{
 
   grid-area:timebar;
 
-  width:min(560px,100%);
+  width:min(720px,100%);
 
   display:grid;
 
   grid-template-columns:
-    40px
-    minmax(120px,1fr)
-    40px;
+    42px
+    minmax(220px,1fr)
+    42px;
 
   align-items:center;
 
-  gap:8px;
+  gap:10px;
+
+  justify-self:center;
 
 }
 
@@ -535,9 +543,18 @@ body{
     width:100%;
   }
 
-  .timebar{
-    width:100%;
-  }
+ .timebar{
+
+  width:100%;
+
+  grid-template-columns:
+    38px
+    minmax(180px,1fr)
+    38px;
+
+  gap:8px;
+
+}
 
   .p-right{
     justify-content:center;
@@ -611,6 +628,11 @@ body{
     bottom:12px;
     right:12px;
   }
+
+  .p-right{
+    display:none;
+}
+
 }
 
 /* =========================================
@@ -890,6 +912,45 @@ body{
   flex-direction:column;
 }
 
+.album-del{
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(
+    180deg,
+    rgba(255,255,255,.08),
+    rgba(255,255,255,.04)
+  );
+  color:#ffd4dc;
+
+  padding:9px 12px;
+
+  border-radius:999px;
+
+  cursor:pointer;
+
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.2px;
+
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+
+  transition:all .2s ease;
+}
+
+.album-del:hover{
+  background:linear-gradient(
+    180deg,
+    rgba(255,45,85,.20),
+    rgba(255,45,85,.10)
+  );
+  border-color:rgba(255,45,85,.28);
+  color:#fff;
+}
+
+.album-del:active{
+  transform:scale(.97);
+}
+
 
 /* =========================================
    FAVORITOS
@@ -1015,4 +1076,101 @@ body{
   border:none;
   background:none;
   padding:0;
+}
+
+
+/* =========================================
+   SONG CARD MOBILE FIX
+========================================= */
+
+.song-card{
+  overflow:hidden;
+}
+
+.song-card .row{
+  gap:10px;
+}
+
+.play-btn,
+.fav-btn,
+.delete-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.play-btn{
+  cursor:pointer;
+}
+
+@media (max-width: 520px){
+
+  .song-card{
+    padding-bottom:64px;
+  }
+
+  .song-left{
+    align-items:flex-start;
+    gap:12px;
+  }
+
+  .song-info{
+    width:100%;
+    min-width:0;
+  }
+
+  .song-card .card-title,
+  .song-card .card-sub{
+    padding-right:8px;
+    word-break:break-word;
+  }
+
+  .song-card .row{
+    position:static;
+    margin-top:10px !important;
+  }
+
+  .song-card .play-btn{
+    position:absolute;
+    left:12px;
+    bottom:12px;
+
+    width:40px;
+    height:40px;
+
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.08);
+    color:#fff;
+  }
+
+  .song-card .fav-btn{
+    position:absolute;
+    right:56px;
+    bottom:12px;
+
+    width:36px;
+    height:36px;
+
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.08);
+    color:#fff;
+    font-size:18px;
+  }
+
+  .song-card .delete-btn{
+    position:absolute;
+    right:12px;
+    bottom:12px;
+
+    width:36px;
+    height:36px;
+
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.08);
+    color:#fff;
+    font-size:16px;
+  }
 }

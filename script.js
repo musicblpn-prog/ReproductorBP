@@ -127,6 +127,7 @@ let shufflePos = 0;
 let previousView = null;
 
 let queueContext = { type: "all" };
+let isUserSeeking = false;
 
 
 // =====================================================
@@ -1177,14 +1178,22 @@ function updateNowPlayingUI(track) {
 // SYNC VISUAL DE BOTONES
 // =====================================================
 
+let lastPlayState = null;
+
 function syncPlayPauseButtons() {
+
     const playing = !!audio.src && !audio.paused && !audio.ended;
+
+    if (playing === lastPlayState) return;
+
+    lastPlayState = playing;
 
     isPlaying = playing;
 
     if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
     if (playFull) playFull.textContent = playing ? "⏸" : "▶";
 }
+
 
 
 function syncRepeatButtons() {
@@ -1448,15 +1457,9 @@ function setAudioSource(track) {
 // =====================================================
 
 async function safePlayAudio() {
-
     const myRequest = ++playRequestId;
 
     try {
-
-        if (audio.readyState < 2) {
-            try { audio.load(); } catch {}
-        }
-
         const playPromise = audio.play();
 
         if (playPromise !== undefined) {
@@ -1464,11 +1467,7 @@ async function safePlayAudio() {
         }
 
         if (myRequest !== playRequestId) return false;
-
-        // solo validar si quedó pausado de verdad
-        if (audio.paused) {
-            return false;
-        }
+        if (audio.paused) return false;
 
         syncPlayPauseButtons();
 
@@ -1479,11 +1478,9 @@ async function safePlayAudio() {
         return true;
 
     } catch (err) {
-
         try {
             audio.pause();
         } catch {}
-
         return false;
     }
 }
@@ -1498,14 +1495,7 @@ async function forceResumePlayback() {
 
     if (!audio.src) return false;
 
-    let ok = await safePlayAudio();
-    if (ok) return true;
-
-    try {
-        audio.load();
-    } catch {}
-
-    ok = await safePlayAudio();
+    const ok = await safePlayAudio();
     if (ok) return true;
 
     return new Promise((resolve) => {
@@ -1517,34 +1507,31 @@ async function forceResumePlayback() {
 
         audio.addEventListener("canplay", onCanPlay, { once: true });
 
-        setTimeout(async () => {
+        setTimeout(() => {
             audio.removeEventListener("canplay", onCanPlay);
-            const played = await safePlayAudio();
-            resolve(played);
-        }, 700);
+            resolve(false);
+        }, 350);
     });
 }
 
 
+
 async function recoverPlaybackIfNeeded() {
-
     if (recoveringAudio) return false;
-
     if (!audio.src) return false;
 
-    if (!audio.paused && audio.readyState >= 2 && !audio.muted && audio.volume > 0) return true;
-
-
+    // Si está sonando normal, no tocarlo
+    if (!audio.paused && !audio.ended) return true;
 
     recoveringAudio = true;
 
     try {
-        const ok = await forceResumePlayback();
-        return ok;
+        return await forceResumePlayback();
     } finally {
         recoveringAudio = false;
     }
 }
+
 
 
 // =====================================================
@@ -1570,98 +1557,32 @@ async function playFromQueue(index) {
     }
 
     preloadUpcomingTrack();
+    setTimeout(() => preloadUpcomingTrack(), 300);
 
+    let played = await forceResumePlayback();
 
-    setTimeout(() => {
-      preloadUpcomingTrack();
-    }, 500);
-
-
-
-let played = await forceResumePlayback();
-
-// verificar que realmente empezó
-if (played) {
-
-    await new Promise(r => setTimeout(r, 150));
-
-    if (
-        audio.paused ||
-        !audio.src ||
-        audio.readyState === 0 ||
-        audio.currentTime === 0
-    ) {
-        played = false;
-    }
-
-}
-
-
-    if (!played) {
-
-     // intento usando preload
+    // Solo fallback si de verdad quedó pausado
+    if (!played && audio.paused && audioPreload.src) {
         try {
-
-         if (audioPreload.src) {
-
-            audio.removeAttribute("src");
-            audio.load();
-
             audio.src = audioPreload.src;
-            audio.load();
-            
-             // pequeño delay para iOS
-            await new Promise(r => setTimeout(r, 80));
-
-            played = await forceResumePlayback();
-
-          }
-
-    } catch {}
-
+            const preloadPlayed = await safePlayAudio();
+            if (preloadPlayed) played = true;
+        } catch {}
     }
 
-if (!played && currentIndex >= 0 && queue[currentIndex]) {
+    // Último intento con la misma URL real
+    if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex]) {
+        try {
+            audio.src = fixDropbox(queue[currentIndex].url);
+            const retryPlayed = await safePlayAudio();
+            if (retryPlayed) played = true;
+        } catch {}
+    }
 
-    try {
-
-        const t = queue[currentIndex];
-
-        audio.removeAttribute("src");
-        audio.load();
-
-        audio.src = fixDropbox(t.url);
-        audio.load();
-
-        await new Promise(r => setTimeout(r, 80));
-
-        played = await forceResumePlayback();
-
-    } catch {}
-
-}
-
-
-   if (!played) {
-
-    const retry = async () => {
-
-        audio.removeEventListener("canplay", retry);
-
-        await new Promise(r => setTimeout(r, 50));
-
-        played = await forceResumePlayback();
-
-    };
-
-    audio.addEventListener("canplay", retry, { once: true });
-
-}
-
-
-
+    syncPlayPauseButtons();
     render();
 }
+
 
 
 // =====================================================
@@ -1689,20 +1610,12 @@ async function resume() {
         setAudioSource(queue[currentIndex]);
     }
 
-    // FIX iOS
-    if (audio.readyState < 2) {
-        try { audio.load(); } catch {}
-    }
-
     const ok = await forceResumePlayback();
 
     isPlaying = ok;
 
     syncPlayPauseButtons();
 
-    if (!ok) {
-        console.log("No se pudo reanudar el audio.");
-    }
 }
 
 
@@ -1710,13 +1623,22 @@ async function resume() {
 // EVENTOS PRINCIPALES DE PLAYER
 // =====================================================
 
+let clickingPlay = false;
+
 playBtn.onclick = async () => {
+
+    if (clickingPlay) return;
+    clickingPlay = true;
+
     if (audio.src && !audio.paused) {
         pause(true);
     } else {
         await resume();
     }
+
+    setTimeout(() => clickingPlay = false, 200);
 };
+
 
 
 prevBtn.onclick = async () => {
@@ -1817,27 +1739,42 @@ favFullBtn?.addEventListener("click", () => {
 // =====================================================
 // SEEK / VOLUMEN / SPEED
 // =====================================================
-
 seek?.addEventListener("input", () => {
-    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    isUserSeeking = true;
+});
+
+seek?.addEventListener("change", () => {
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+        isUserSeeking = false;
+        return;
+    }
+
     audio.currentTime = (Number(seek.value) / 100) * audio.duration;
     updatePositionState();
+
+    setTimeout(() => {
+        isUserSeeking = false;
+    }, 150);
 });
 
 seekFull?.addEventListener("input", () => {
-    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    isUserSeeking = true;
+});
+
+seekFull?.addEventListener("change", () => {
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+        isUserSeeking = false;
+        return;
+    }
+
     audio.currentTime = (Number(seekFull.value) / 100) * audio.duration;
     updatePositionState();
+
+    setTimeout(() => {
+        isUserSeeking = false;
+    }, 150);
 });
 
-vol?.addEventListener("input", () => {
-    audio.volume = Number(vol.value);
-});
-
-speedControl?.addEventListener("change", () => {
-    audio.playbackRate = parseFloat(speedControl.value || "1");
-    updatePositionState();
-});
 
 
 // =====================================================
@@ -1859,7 +1796,7 @@ audio.addEventListener("loadedmetadata", () => {
 audio.addEventListener("timeupdate", () => {
     tCur.textContent = fmtTime(audio.currentTime);
 
-    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    if (!isUserSeeking && Number.isFinite(audio.duration) && audio.duration > 0) {
         const percent = (audio.currentTime / audio.duration) * 100;
         if (seek) seek.value = percent;
         if (seekFull) seekFull.value = percent;
@@ -1869,10 +1806,13 @@ audio.addEventListener("timeupdate", () => {
 });
 
 
+
 let lastTimeCheck = 0;
 let lastTimeValue = 0;
 
 audio.addEventListener("timeupdate", async () => {
+
+    if (audio.seeking) return;
 
     const now = Date.now();
 
@@ -1893,6 +1833,7 @@ audio.addEventListener("timeupdate", async () => {
     }
 
 });
+
 
 
 
@@ -1965,60 +1906,6 @@ audio.addEventListener("error", async () => {
 });
 
 
-
-audio.addEventListener("stalled", async () => {
-
-    console.log("Audio stalled");
-
-    if (!audio.paused && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
-
-
-
-
-audio.addEventListener("suspend", async () => {
-
-    console.log("Audio suspend");
-
-    if (!audio.paused && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
-
-
-
-
-
-
-audio.addEventListener("waiting", async () => {
-
-    console.log("Audio waiting");
-
-    if (!audio.paused && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
-
-audio.addEventListener("canplaythrough", async () => {
-
-    if (!audio.paused && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
 
 
 // =====================================================
@@ -2094,21 +1981,6 @@ window.addEventListener("offline", () => {
     wasPlayingBeforeHide = !audio.paused;
 
 });
-
-
-
-
-// cuando el navegador decide pausar audio en background
-document.addEventListener("resume", async () => {
-
-    if (!audio.paused && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
-
 
 
 // =====================================================

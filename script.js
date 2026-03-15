@@ -1224,6 +1224,7 @@ function syncShuffleButtons() {
 let playRequestId = 0;
 let recoveringAudio = false;
 let wasPlayingBeforeHide = false;
+let userPaused = false;
 
 
 // =====================================================
@@ -1517,10 +1518,15 @@ async function forceResumePlayback() {
 
 
 async function recoverPlaybackIfNeeded() {
+
     if (recoveringAudio) return false;
+
     if (!audio.src) return false;
 
-    // Si está sonando normal, no tocarlo
+    // ✅ si el usuario pausó, NO recuperar
+    if (userPaused) return false;
+
+    // si está sonando normal, no tocar
     if (!audio.paused && !audio.ended) return true;
 
     recoveringAudio = true;
@@ -1530,6 +1536,7 @@ async function recoverPlaybackIfNeeded() {
     } finally {
         recoveringAudio = false;
     }
+
 }
 
 
@@ -1590,8 +1597,11 @@ async function playFromQueue(index) {
 // =====================================================
 
 function pause(userInitiated = false) {
+
     audio.pause();
+
     isPlaying = false;
+
     syncPlayPauseButtons();
 
     if ("mediaSession" in navigator) {
@@ -1600,12 +1610,14 @@ function pause(userInitiated = false) {
 
     if (userInitiated) {
         wasPlayingBeforeHide = false;
+        userPaused = true;
     }
 }
 
 
 async function resume() {
 
+    userPaused = false; 
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
         setAudioSource(queue[currentIndex]);
     }
@@ -1913,14 +1925,18 @@ audio.addEventListener("error", async () => {
 // =====================================================
 
 document.addEventListener("visibilitychange", async () => {
+
     if (document.hidden) {
         wasPlayingBeforeHide = !audio.paused;
         return;
     }
 
+    if (userPaused) return;
+
     if (wasPlayingBeforeHide && audio.paused) {
         await recoverPlaybackIfNeeded();
     }
+
 });
 
 
@@ -1937,9 +1953,13 @@ window.addEventListener("online", async () => {
 
 
 window.addEventListener("focus", async () => {
+
+    if (userPaused) return;
+
     if (wasPlayingBeforeHide && audio.paused) {
         await recoverPlaybackIfNeeded();
     }
+
 });
 
 
@@ -1950,10 +1970,10 @@ window.addEventListener("focus", async () => {
 // cuando la página vuelve desde background
 window.addEventListener("pageshow", async () => {
 
+    if (userPaused) return;
+
     if (!audio.paused && currentIndex >= 0) {
-
         await recoverPlaybackIfNeeded();
-
     }
 
 });

@@ -1754,6 +1754,13 @@ favFullBtn?.addEventListener("click", () => {
 // =====================================================
 // SEEK / VOLUMEN / SPEED
 // =====================================================
+if (vol) {
+    vol.addEventListener("input", () => {
+        audio.volume = Number(vol.value);
+    });
+}
+
+
 seek?.addEventListener("input", () => {
     isUserSeeking = true;
 });

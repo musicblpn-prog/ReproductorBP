@@ -1587,10 +1587,13 @@ async function playFromQueue(index) {
     }
 
     syncPlayPauseButtons();
-    render();
+
+    if ("mediaSession" in navigator) {
+       navigator.mediaSession.playbackState = "playing";
+    }
+
+render();
 }
-
-
 
 // =====================================================
 // PAUSE / RESUME

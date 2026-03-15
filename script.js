@@ -1453,7 +1453,6 @@ async function safePlayAudio() {
 
     try {
 
-        // FIX iOS → asegurar que audio esté listo
         if (audio.readyState < 2) {
             try { audio.load(); } catch {}
         }
@@ -1466,6 +1465,11 @@ async function safePlayAudio() {
 
         if (myRequest !== playRequestId) return false;
 
+        // solo validar si quedó pausado de verdad
+        if (audio.paused) {
+            return false;
+        }
+
         syncPlayPauseButtons();
 
         if ("mediaSession" in navigator) {
@@ -1476,15 +1480,15 @@ async function safePlayAudio() {
 
     } catch (err) {
 
-        // FIX extra para iPhone
         try {
             audio.pause();
-            audio.currentTime = audio.currentTime || 0;
         } catch {}
 
         return false;
     }
 }
+
+
 
 
 async function forceResumePlayback() {
@@ -1574,8 +1578,24 @@ async function playFromQueue(index) {
 
 
 
+let played = await forceResumePlayback();
 
-    let played = await forceResumePlayback();
+// verificar que realmente empezó
+if (played) {
+
+    await new Promise(r => setTimeout(r, 150));
+
+    if (
+        audio.paused ||
+        !audio.src ||
+        audio.readyState === 0 ||
+        audio.currentTime === 0
+    ) {
+        played = false;
+    }
+
+}
+
 
     if (!played) {
 
@@ -1601,8 +1621,7 @@ async function playFromQueue(index) {
 
     }
 
-
-    if (!played && currentIndex >= 0 && queue[currentIndex]) {
+if (!played && currentIndex >= 0 && queue[currentIndex]) {
 
     try {
 
@@ -1616,19 +1635,30 @@ async function playFromQueue(index) {
 
         await new Promise(r => setTimeout(r, 80));
 
-        await forceResumePlayback();
+        played = await forceResumePlayback();
 
     } catch {}
 
 }
 
-    if (!played) {
-        const retry = async () => {
-            audio.removeEventListener("canplay", retry);
-            await forceResumePlayback();
-        };
-        audio.addEventListener("canplay", retry, { once: true });
-    }
+
+   if (!played) {
+
+    const retry = async () => {
+
+        audio.removeEventListener("canplay", retry);
+
+        await new Promise(r => setTimeout(r, 50));
+
+        played = await forceResumePlayback();
+
+    };
+
+    audio.addEventListener("canplay", retry, { once: true });
+
+}
+
+
 
     render();
 }
@@ -2058,17 +2088,6 @@ window.addEventListener("blur", () => {
 });
 
 
-window.addEventListener("focus", async () => {
-
-    if (wasPlayingBeforeHide && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
-
-
 // cuando cambia conexión (muy importante en iPhone)
 window.addEventListener("offline", () => {
 
@@ -2077,15 +2096,6 @@ window.addEventListener("offline", () => {
 });
 
 
-window.addEventListener("online", async () => {
-
-    if (!audio.paused && currentIndex >= 0) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
-});
 
 
 // cuando el navegador decide pausar audio en background
@@ -2099,21 +2109,6 @@ document.addEventListener("resume", async () => {
 
 });
 
-
-// iOS a veces dispara esto cuando vuelve del lockscreen
-document.addEventListener("visibilitychange", async () => {
-
-    if (!document.hidden) {
-
-        if (!audio.paused && currentIndex >= 0) {
-
-            await recoverPlaybackIfNeeded();
-
-        }
-
-    }
-
-});
 
 
 // =====================================================

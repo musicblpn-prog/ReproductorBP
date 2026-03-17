@@ -105,6 +105,7 @@ let library = loadLibrary();
 library.collections ??= {};
 
 library.collections["Music Day"] ??= [];
+library.collections["Favoritos"] ??= [];
 
 let favorites = loadFavorites();
 
@@ -559,16 +560,20 @@ function matchTrack(track, query) {
 }
 
 
-function cleanFavorites() {
+function cleanCollections() {
+
     const existingIds = new Set(allTracks().map(t => t.id));
 
-    favorites.forEach(id => {
-        if (!existingIds.has(id)) {
-            favorites.delete(id);
-        }
-    });
+    for (const name in library.collections) {
 
-    saveFavorites();
+        const arr = library.collections[name] ?? [];
+
+        library.collections[name] = arr.filter(id => existingIds.has(id));
+
+    }
+
+    saveLibrary();
+
 }
 
 
@@ -580,6 +585,7 @@ function render() {
     setActiveNav();
     setCrumbs();
     cleanFavorites();
+    cleanCollections();
 
     const q = normalize(searchInput.value).toLowerCase();
 
@@ -597,9 +603,21 @@ function render() {
         const collections = Object.keys(library.collections ?? {}).sort((a, b) => a.localeCompare(b));
 
         collections.forEach(name => {
-            const count = name === "Favoritos"
-                ? favoriteTracks().length
-                : (library.collections[name] ?? []).length;
+            let count = 0;
+
+if (name === "Favoritos") {
+
+    count = favoriteTracks().length;
+
+} else {
+
+    const ids = library.collections[name] ?? [];
+
+    count = ids.filter(id =>
+        allTracks().some(t => t.id === id)
+    ).length;
+
+}
 
             listEl.appendChild(card({
                 title: name,
@@ -1532,7 +1550,13 @@ async function recoverPlaybackIfNeeded() {
     recoveringAudio = true;
 
     try {
-        return await forceResumePlayback();
+        const ok = await forceResumePlayback();
+
+if (ok && "mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+}
+
+return ok;
     } finally {
         recoveringAudio = false;
     }
@@ -1861,14 +1885,19 @@ audio.addEventListener("timeupdate", async () => {
 
 
 audio.addEventListener("playing", () => {
+
     isPlaying = true;
+
     syncPlayPauseButtons();
 
     if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "playing";
     }
 
-    updatePositionState();
+    if (!audio.paused) {
+        updatePositionState();
+    }
+
 });
 
 
@@ -1914,6 +1943,10 @@ audio.addEventListener("ended", async () => {
     }
 
     await playFromQueue(nextIndex);
+
+    if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+}
 });
 
 

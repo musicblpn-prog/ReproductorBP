@@ -2196,17 +2196,72 @@ fileImport?.addEventListener("change", (e) => {
 
             // ---------- LIBRARY ----------
 
-            if (data.library) {
+          if (data.library) {
 
-                library = data.library;
+    const newLib = data.library;
 
-                if (!library.collections) {
-                    library.collections = {};
+    // asegurar estructura
+    library.genres ??= {};
+    library.collections ??= {};
+
+    newLib.genres ??= {};
+    newLib.collections ??= {};
+
+    // ===== MERGE GENRES =====
+
+    for (const g in newLib.genres) {
+
+        library.genres[g] ??= { albums: {} };
+
+        for (const a in newLib.genres[g].albums) {
+
+            library.genres[g].albums[a] ??= {
+                cover: "",
+                tracks: []
+            };
+
+            const existingTracks =
+                library.genres[g].albums[a].tracks ?? [];
+
+            const newTracks =
+                newLib.genres[g].albums[a].tracks ?? [];
+
+            const existingIds =
+                new Set(existingTracks.map(t => t.id));
+
+            newTracks.forEach(t => {
+
+                if (!existingIds.has(t.id)) {
+                    existingTracks.push(t);
                 }
 
-                saveLibrary();
+            });
 
-            }
+            library.genres[g].albums[a].tracks = existingTracks;
+
+        }
+
+    }
+
+    // ===== MERGE COLLECTIONS =====
+
+    for (const name in newLib.collections) {
+
+        library.collections[name] ??= [];
+
+        const set = new Set(library.collections[name]);
+
+        newLib.collections[name].forEach(id => {
+            set.add(id);
+        });
+
+        library.collections[name] = [...set];
+
+    }
+
+    saveLibrary();
+
+}
 
 
             // ---------- FAVORITES ----------

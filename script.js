@@ -560,6 +560,25 @@ function matchTrack(track, query) {
 }
 
 
+function cleanFavorites() {
+
+    const existingIds = new Set(allTracks().map(t => t.id));
+
+    favorites.forEach(id => {
+
+        if (!existingIds.has(id)) {
+
+            favorites.delete(id);
+
+        }
+
+    });
+
+    saveFavorites();
+
+}
+
+
 function cleanCollections() {
 
     const existingIds = new Set(allTracks().map(t => t.id));

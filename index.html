@@ -296,6 +296,35 @@
 
 </div>
 
+<div id="collectionModal" class="modal modal-hidden">
+
+  <div class="modal-box">
+
+    <h3>Guardar en álbum</h3>
+
+    <div id="collectionList"></div>
+
+    <input
+      id="newCollectionName"
+      placeholder="Nuevo álbum"
+    />
+
+    <div class="row">
+
+      <button id="createCollectionBtn">
+        Crear
+      </button>
+
+      <button id="closeCollectionModal">
+        Cancelar
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
 <!-- =====================================
      FULL PLAYER
 ===================================== -->
@@ -367,13 +396,16 @@
       </button>
 
 
-      <select id="speedControl">
+      <button id="addToCollectionBtn">📁</button>
+
+
+      <!--<select id="speedControl">
 
         <option value="1">1x</option>
         <option value="1.5">1.5x</option>
         <option value="2">2x</option>
 
-      </select>
+      </select>-->
 
     </div>
 

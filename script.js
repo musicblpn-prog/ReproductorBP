@@ -44,6 +44,21 @@ const searchInput = document.getElementById("searchInput");
 
 const modal = document.getElementById("modal");
 
+const collectionModal =
+    document.getElementById("collectionModal");
+
+const collectionList =
+    document.getElementById("collectionList");
+
+const newCollectionName =
+    document.getElementById("newCollectionName");
+
+const createCollectionBtn =
+    document.getElementById("createCollectionBtn");
+
+const closeCollectionModal =
+    document.getElementById("closeCollectionModal");
+
 const btnAdd = document.getElementById("btnAdd");
 const btnAdd2 = document.getElementById("btnAdd2");
 const btnExport = document.getElementById("btnExport");
@@ -85,6 +100,9 @@ const repeatFull = document.getElementById("repeatFull");
 
 const speedControl = document.getElementById("speedControl");
 const favFullBtn = document.getElementById("favFullBtn");
+const addToCollectionBtn =
+    document.getElementById("addToCollectionBtn");
+
 
 const shuffleBtn = document.getElementById("shuffleBtn");
 const repeatBtn = document.getElementById("repeatBtn");
@@ -110,6 +128,9 @@ library.collections["Favoritos"] ??= [];
 let favorites = loadFavorites();
 
 let view = "genres";
+
+// 
+let collectionTrackTemp = null;
 
 let selectedGenre = null;
 let selectedAlbum = null;
@@ -183,6 +204,123 @@ function saveLibrary() {
     localStorage.setItem(LS_KEY, JSON.stringify(library));
 
 }
+
+function createCollection(name) {
+
+    name = normalize(name);
+
+    if (!name) return;
+
+    library.collections ??= {};
+
+    if (!library.collections[name]) {
+
+        library.collections[name] = [];
+
+        saveLibrary();
+
+    }
+
+}
+
+
+function addTrackToCollection(collectionName, trackId) {
+
+    if (!collectionName || !trackId) return;
+
+    library.collections ??= {};
+    library.collections[collectionName] ??= [];
+
+    const arr = library.collections[collectionName];
+
+    if (!arr.includes(trackId)) {
+
+        arr.push(trackId);
+
+        saveLibrary();
+
+    }
+
+}
+
+function chooseCollectionAndAdd(track) {
+
+    if (!track?.id) return;
+
+    collectionTrackTemp = track;
+
+    renderCollectionModal();
+
+    collectionModal.classList.remove(
+        "modal-hidden"
+    );
+
+}
+
+function renderCollectionModal() {
+
+    collectionList.innerHTML = "";
+
+    const names =
+        Object.keys(
+            library.collections ?? {}
+        ).sort();
+
+    names.forEach(name => {
+
+        const div =
+            document.createElement("div");
+
+        div.className = "card";
+
+        div.textContent = name;
+
+        div.onclick = () => {
+
+            addTrackToCollection(
+                name,
+                collectionTrackTemp.id
+            );
+
+            collectionModal.classList.add(
+                "modal-hidden"
+            );
+
+            render();
+
+        };
+
+        collectionList.appendChild(div);
+
+    });
+
+}
+
+createCollectionBtn.onclick = () => {
+
+    const name =
+        normalize(
+            newCollectionName.value
+        );
+
+    if (!name) return;
+
+    createCollection(name);
+
+    addTrackToCollection(
+        name,
+        collectionTrackTemp.id
+    );
+
+    newCollectionName.value = "";
+
+    collectionModal.classList.add(
+        "modal-hidden"
+    );
+
+    render();
+
+};
 
 
 // FAVORITES
@@ -1794,6 +1932,19 @@ favFullBtn?.addEventListener("click", () => {
 });
 
 
+addToCollectionBtn?.addEventListener("click", () => {
+
+    if (currentIndex < 0) return;
+
+    const track = queue[currentIndex];
+
+    if (!track) return;
+
+    chooseCollectionAndAdd(track);
+
+});
+
+
 // =====================================================
 // SEEK / VOLUMEN / SPEED
 // =====================================================
@@ -2215,10 +2366,15 @@ fileImport?.addEventListener("change", (e) => {
 
         for (const a in newLib.genres[g].albums) {
 
-            library.genres[g].albums[a] ??= {
-                cover: "",
-                tracks: []
-            };
+           library.genres[g].albums[a] ??= {
+    cover: "",
+    tracks: []
+};
+
+if (!library.genres[g].albums[a].cover) {
+    library.genres[g].albums[a].cover =
+        newLib.genres[g].albums[a].cover || "";
+}
 
             const existingTracks =
                 library.genres[g].albums[a].tracks ?? [];
@@ -2306,6 +2462,14 @@ if (btnAdd2) btnAdd2.onclick = openModal;
 closeModal.onclick = closeModalFn;
 cancelSong.onclick = closeModalFn;
 
+// ===== NUEVO MODAL DE COLECCIONES =====
+closeCollectionModal.onclick = () => {
+
+    collectionModal.classList.add(
+        "modal-hidden"
+    );
+
+};
 
 function openModal() {
     setMsg("");

@@ -776,16 +776,35 @@ if (name === "Favoritos") {
 
 }
 
-            listEl.appendChild(card({
-                title: name,
-                sub: `${count} canción(es)`,
-                pill: "Abrir",
-                onClick: () => {
-                    selectedAlbum = name;
-                    view = "collectionSongs";
-                    render();
-                }
-            }));
+          const div = card({
+    title: name,
+    sub: `${count} canción(es)`,
+    pill: "Abrir",
+    onClick: () => {
+        selectedAlbum = name;
+        view = "collectionSongs";
+        render();
+    }
+});
+
+if(name !== "Music Day" && name !== "Favoritos"){
+
+    const del = document.createElement("button");
+
+    del.textContent = "Eliminar";
+
+    del.className = "album-del";
+
+    del.onclick = (e)=>{
+        e.stopPropagation();
+        deleteCollection(name);
+    };
+
+    div.appendChild(del);
+
+}
+
+listEl.appendChild(div);
         });
 
         return;
@@ -1236,6 +1255,32 @@ function deleteAlbum(genreName, albumName) {
 
     saveLibrary();
     render();
+}
+
+
+//deletealbum personalizado
+
+function deleteCollection(name){
+
+    if (!name) return;
+
+    if (name === "Music Day") return;
+    if (name === "Favoritos") return;
+
+    const ok = confirm(
+        "Eliminar colección: " + name + " ?"
+    );
+
+    if (!ok) return;
+
+    delete library.collections[name];
+
+    saveLibrary();
+
+    view = "collections";
+
+    render();
+
 }
 
 

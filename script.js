@@ -1417,10 +1417,28 @@ function syncPlayPauseButtons() {
     if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
     if (playFull) playFull.textContent = playing ? "⏸" : "▶";
 
-    if ("mediaSession" in navigator) {
+    syncMediaSessionState(); 
+
+}
+
+
+function syncMediaSessionState() {
+
+    if (!("mediaSession" in navigator)) return;
+
+    const playing =
+        !!audio.src &&
+        !audio.paused &&
+        !audio.ended &&
+        audio.readyState >= 2;
+
+    try {
+
         navigator.mediaSession.playbackState =
             playing ? "playing" : "paused";
-    }
+
+    } catch {}
+
 }
 
 
@@ -1665,18 +1683,11 @@ function setAudioSource(track) {
     const src = fixDropbox(track.url || "");
     if (!src) return false;
 
-    try {
-        audio.pause();
-    } catch {}
-
-    // FIX iOS
-    try {
-        audio.removeAttribute("src");
-        audio.load();
-    } catch {}
+    if (audio.src === src) {
+        return true;
+    }
 
     audio.src = src;
-    audio.load();
 
     return true;
 }
@@ -1719,29 +1730,24 @@ async function safePlayAudio() {
 
 
 async function forceResumePlayback() {
+
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
         setAudioSource(queue[currentIndex]);
     }
 
     if (!audio.src) return false;
 
-    const ok = await safePlayAudio();
-    if (ok) return true;
+    try {
 
-    return new Promise((resolve) => {
-        const onCanPlay = async () => {
-            audio.removeEventListener("canplay", onCanPlay);
-            const played = await safePlayAudio();
-            resolve(played);
-        };
+        await audio.play();
 
-        audio.addEventListener("canplay", onCanPlay, { once: true });
+        return true;
 
-        setTimeout(() => {
-            audio.removeEventListener("canplay", onCanPlay);
-            resolve(false);
-        }, 350);
-    });
+    } catch {
+
+        return false;
+
+    }
 }
 
 
@@ -1754,25 +1760,13 @@ async function recoverPlaybackIfNeeded() {
 
     if (userPaused) return false;
 
-    if (!audio.paused && !audio.ended) return true;
+    if (!audio.paused) return true;
 
     recoveringAudio = true;
 
     try {
 
-        const ok = await forceResumePlayback();
-
-        if (!ok && currentIndex >= 0 && queue[currentIndex]) {
-
-            setAudioSource(queue[currentIndex]);
-
-            await safePlayAudio();
-
-        }
-
-        if ("mediaSession" in navigator) {
-            navigator.mediaSession.playbackState = "playing";
-        }
+        await forceResumePlayback();
 
         return true;
 
@@ -1809,29 +1803,28 @@ async function playFromQueue(index) {
     }
 
     preloadUpcomingTrack();
-    setTimeout(() => preloadUpcomingTrack(), 300);
 
     let played = await forceResumePlayback();
 
     // Solo fallback si de verdad quedó pausado
-    if (!played && audio.paused && audioPreload.src) {
-        try {
-            audio.src = audioPreload.src;
-            const preloadPlayed = await safePlayAudio();
-            if (preloadPlayed) played = true;
-        } catch {}
-    }
+if (!played && audio.paused && audioPreload.src) {
+    try {
+        audio.src = audioPreload.src;
+        const preloadPlayed = await safePlayAudio();
+        if (preloadPlayed) played = true;
+    } catch {}
+}
 
-    // Último intento con la misma URL real
-    if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex]) {
-        try {
-            audio.src = fixDropbox(queue[currentIndex].url);
-            const retryPlayed = await safePlayAudio();
-            if (retryPlayed) played = true;
-        } catch {}
-    }
+if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex]) {
+    try {
+        audio.src = fixDropbox(queue[currentIndex].url);
+        const retryPlayed = await safePlayAudio();
+        if (retryPlayed) played = true;
+    } catch {}
+}
 
     syncPlayPauseButtons();
+    syncMediaSessionState();
 
     if ("mediaSession" in navigator) {
        navigator.mediaSession.playbackState = "playing";
@@ -1875,6 +1868,7 @@ async function resume() {
     isPlaying = ok;
 
     syncPlayPauseButtons();
+    syncMediaSessionState();
 
 }
 
@@ -2087,46 +2081,12 @@ audio.addEventListener("timeupdate", () => {
 
 
 
-let lastTimeCheck = 0;
-let lastTimeValue = 0;
-
-audio.addEventListener("timeupdate", async () => {
-
-    if (audio.seeking) return;
-
-    const now = Date.now();
-
-    if (now - lastTimeCheck < 2000) return;
-
-    lastTimeCheck = now;
-
-    if (!audio.paused) {
-
-        if (Math.abs(audio.currentTime - lastTimeValue) < 0.01) {
-
-            await recoverPlaybackIfNeeded();
-
-        }
-
-        lastTimeValue = audio.currentTime;
-
-    }
-
-});
-
-
-
-
-
 audio.addEventListener("playing", () => {
 
     isPlaying = true;
 
     syncPlayPauseButtons();
-
-    if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "playing";
-    }
+    syncMediaSessionState();
 
     if (!audio.paused) {
         updatePositionState();
@@ -2152,10 +2112,7 @@ audio.addEventListener("pause", () => {
     }
 
     syncPlayPauseButtons();
-
-    if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "paused";
-    }
+    syncMediaSessionState();
 
 });
 
@@ -2235,18 +2192,6 @@ window.addEventListener("online", async () => {
 });
 
 
-
-window.addEventListener("focus", async () => {
-
-    if (userPaused) return;
-
-    if (wasPlayingBeforeHide && audio.paused) {
-        await recoverPlaybackIfNeeded();
-    }
-
-});
-
-
 // =====================================================
 // FIX EXTRA iOS BACKGROUND / PWA / SAFARI
 // =====================================================
@@ -2256,7 +2201,7 @@ window.addEventListener("pageshow", async () => {
 
     if (userPaused) return;
 
-    if (!audio.paused && currentIndex >= 0) {
+    if (wasPlayingBeforeHide && audio.paused) {
         await recoverPlaybackIfNeeded();
     }
 

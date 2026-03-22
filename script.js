@@ -1402,7 +1402,11 @@ let lastPlayState = null;
 
 function syncPlayPauseButtons() {
 
-    const playing = !!audio.src && !audio.paused && !audio.ended;
+    const playing =
+        !!audio.src &&
+        !audio.paused &&
+        !audio.ended &&
+        audio.readyState >= 2;
 
     if (playing === lastPlayState) return;
 
@@ -1412,6 +1416,11 @@ function syncPlayPauseButtons() {
 
     if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
     if (playFull) playFull.textContent = playing ? "⏸" : "▶";
+
+    if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState =
+            playing ? "playing" : "paused";
+    }
 }
 
 
@@ -1743,26 +1752,35 @@ async function recoverPlaybackIfNeeded() {
 
     if (!audio.src) return false;
 
-    // ✅ si el usuario pausó, NO recuperar
     if (userPaused) return false;
 
-    // si está sonando normal, no tocar
     if (!audio.paused && !audio.ended) return true;
 
     recoveringAudio = true;
 
     try {
+
         const ok = await forceResumePlayback();
 
-if (ok && "mediaSession" in navigator) {
-    navigator.mediaSession.playbackState = "playing";
-}
+        if (!ok && currentIndex >= 0 && queue[currentIndex]) {
 
-return ok;
+            setAudioSource(queue[currentIndex]);
+
+            await safePlayAudio();
+
+        }
+
+        if ("mediaSession" in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+        }
+
+        return true;
+
     } finally {
-        recoveringAudio = false;
-    }
 
+        recoveringAudio = false;
+
+    }
 }
 
 
@@ -1779,7 +1797,8 @@ async function playFromQueue(index) {
     currentIndex = index;
 
     const track = queue[currentIndex];
-    if (!track) return;
+    if (!track || !track.url) return;
+    
 
     setAudioSource(track);
     updateNowPlayingUI(track);
@@ -2127,12 +2146,17 @@ audio.addEventListener("play", () => {
 
 
 audio.addEventListener("pause", () => {
-    isPlaying = false;
+
+    if (userPaused) {
+        isPlaying = false;
+    }
+
     syncPlayPauseButtons();
 
     if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "paused";
     }
+
 });
 
 
@@ -2200,7 +2224,9 @@ document.addEventListener("visibilitychange", async () => {
 
 window.addEventListener("online", async () => {
 
-    if (!audio.paused && currentIndex >= 0) {
+    if (userPaused) return;
+
+    if (currentIndex >= 0 && queue[currentIndex]) {
 
         await recoverPlaybackIfNeeded();
 

@@ -1750,8 +1750,29 @@ function setupMediaSession(track) {
         });
 
         navigator.mediaSession.setActionHandler("play", async () => {
+
     userPaused = false;
+
     await resume();
+
+    // FIX iOS — forzar audio real
+    if (audio.paused && audio.src) {
+
+        try {
+            await audio.play();
+        } catch {}
+
+        setTimeout(async () => {
+
+            if (audio.paused) {
+
+                await recoverPlaybackIfNeeded();
+
+            }
+
+        }, 300);
+    }
+
 });
 
         navigator.mediaSession.setActionHandler("pause", () => {
@@ -1974,6 +1995,24 @@ async function recoverPlaybackIfNeeded() {
             }
         }
 
+        // FIX extra iOS suspendido
+if (audio.src) {
+
+    try {
+
+        audio.load();
+
+        ok = await safePlayAudio();
+
+        if (ok) {
+            syncPlayPauseButtons();
+            return true;
+        }
+
+    } catch {}
+
+}
+
         syncPlayPauseButtons();
         return false;
 
@@ -2094,6 +2133,15 @@ async function resume() {
         audio.src = fixDropbox(track.url);
 
         ok = await safePlayAudio();
+    }
+
+    // FIX iOS suspendido
+    if (!ok && audio.src) {
+
+        try {
+            audio.load();
+            ok = await safePlayAudio();
+        } catch {}
 
     }
 
@@ -2341,8 +2389,25 @@ audio.addEventListener("play", () => {
 
 
 audio.addEventListener("pause", () => {
+
     isPlaying = false;
     syncPlayPauseButtons();
+
+    // FIX iOS background
+    if (!userPaused) {
+
+        setTimeout(async () => {
+
+            if (!userPaused && audio.paused) {
+
+                await recoverPlaybackIfNeeded();
+
+            }
+
+        }, 1000);
+
+    }
+
 });
 
 

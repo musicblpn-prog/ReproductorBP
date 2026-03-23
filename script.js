@@ -10,7 +10,7 @@
 const LS_KEY = "mi_music_library_v1";
 const LS_FAV = "mi_music_favorites_v1";
 const LS_DAY = "mi_music_day_v1";
-
+const LS_PLAYER = "mi_music_player_state_v1";
 
 // =====================================================
 // DOM ELEMENTS
@@ -170,6 +170,7 @@ let isUserSeeking = false;
 audio.volume = Number(vol.value);
 
 render();
+restorePlayerState();
 
 
 // =====================================================
@@ -370,11 +371,107 @@ function saveFavorites() {
 
 }
 
+function savePlayerState() {
+
+    const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
+
+    const data = {
+        trackId: currentTrack?.id ?? null,
+        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+        wasPlaying: !!audio.src && !audio.paused && !audio.ended,
+        volume: Number(vol?.value ?? audio.volume ?? 1),
+        shuffle: isShuffle,
+        repeat: repeatMode
+    };
+
+    localStorage.setItem(LS_PLAYER, JSON.stringify(data));
+}
+
+function loadPlayerState() {
+
+    try {
+
+        const raw = localStorage.getItem(LS_PLAYER);
+        if (!raw) return null;
+
+        return JSON.parse(raw);
+
+    } catch {
+        return null;
+    }
+}
+
+async function restorePlayerState() {
+
+    const saved = loadPlayerState();
+    if (!saved) return;
+
+    if (typeof saved.volume === "number" && vol) {
+        vol.value = saved.volume;
+        audio.volume = saved.volume;
+    }
+
+    isShuffle = !!saved.shuffle;
+    repeatMode = saved.repeat || "off";
+
+    syncShuffleButtons();
+    syncRepeatButtons();
+
+    if (!saved.trackId) return;
+
+    const tracks = allTracks();
+    queue = tracks;
+    const foundIndex = tracks.findIndex(t => t.id === saved.trackId);
+
+    if (foundIndex < 0) return;
+
+    queue = tracks;
+    currentIndex = foundIndex;
+
+    const track = queue[currentIndex];
+    if (!track) return;
+
+    setAudioSource(track);
+    updateNowPlayingUI(track);
+    setupMediaSession(track);
+
+    const applySavedTime = () => {
+        if (
+            Number.isFinite(saved.currentTime) &&
+            saved.currentTime > 0 &&
+            Number.isFinite(audio.duration)
+        ) {
+            audio.currentTime = Math.min(saved.currentTime, audio.duration || saved.currentTime);
+        }
+    };
+
+    audio.addEventListener("loadedmetadata", applySavedTime, { once: true });
+
+    if (saved.wasPlaying) {
+    try {
+        await resume();
+    } catch {}
+} else {
+    pause(false);
+        syncPlayPauseButtons();
+        syncMediaSessionState();
+    }
+}
+
 
 // =====================================================
 // HELPERS
 // =====================================================
 
+//
+function vibrateShort() {
+
+    if (navigator.vibrate) {
+        navigator.vibrate(10);
+    }
+
+}
+//
 function normalize(str) {
 
     return (str ?? "").toString().trim();
@@ -1345,6 +1442,16 @@ function updateNowPlayingUI(track) {
         // animación suave
         bigCover.classList.add("change");
 
+        bigCover.style.transform = "scale(0.95)";
+bigCover.style.opacity = "0.7";
+
+setTimeout(() => {
+
+    bigCover.style.transform = "scale(1)";
+    bigCover.style.opacity = "1";
+
+}, 80);
+
         setTimeout(() => {
             bigCover.classList.remove("change");
         }, 200);
@@ -1501,6 +1608,7 @@ function cycleRepeatMode() {
     }
 
     syncRepeatButtons();
+    savePlayerState();
 }
 
 
@@ -1642,8 +1750,9 @@ function setupMediaSession(track) {
         });
 
         navigator.mediaSession.setActionHandler("play", async () => {
-            await forceResumePlayback();
-        });
+    userPaused = false;
+    await resume();
+});
 
         navigator.mediaSession.setActionHandler("pause", () => {
             pause(true);
@@ -1744,7 +1853,49 @@ async function safePlayAudio() {
     }
 }
 
+//
+async function fadeOutAudio() {
 
+    if (audio.paused) return;
+
+    const steps = 10;
+    const stepTime = 15;
+
+    const startVol = audio.volume;
+
+    for (let i = steps; i >= 0; i--) {
+
+        audio.volume = startVol * (i / steps);
+
+        await new Promise(r => setTimeout(r, stepTime));
+
+    }
+
+    audio.pause();
+
+    audio.volume = startVol;
+
+}
+//
+async function fadeInAudio() {
+
+    const steps = 10;
+    const stepTime = 15;
+
+    const targetVol = Number(vol.value) || 1;
+
+    audio.volume = 0;
+
+    for (let i = 0; i <= steps; i++) {
+
+        audio.volume = targetVol * (i / steps);
+
+        await new Promise(r => setTimeout(r, stepTime));
+
+    }
+
+}
+//
 
 
 async function forceResumePlayback() {
@@ -1771,39 +1922,30 @@ async function forceResumePlayback() {
 
 
 async function recoverPlaybackIfNeeded() {
- 
+
     const token = currentTrackToken;
 
     if (recoveringAudio) return false;
-
     if (!audio.src) return false;
-
     if (userPaused) return false;
-
-    // ✅ si ya está sonando no hacer nada
-    if (!audio.paused && audio.readyState >= 2) return true;
+    if (!audio.paused) return true;
 
     recoveringAudio = true;
 
     try {
-
-        // intento 1 — resume normal
 
         let ok = await forceResumePlayback();
 
         if (token !== currentTrackToken) return false;
 
         if (ok && !audio.paused) {
+            syncPlayPauseButtons();
             return true;
         }
-
-
-        // intento 2 — recargar track actual
 
         if (currentIndex >= 0 && queue[currentIndex]) {
 
             const track = queue[currentIndex];
-
             const src = fixDropbox(track.url);
 
             audio.src = src;
@@ -1812,11 +1954,11 @@ async function recoverPlaybackIfNeeded() {
 
             if (token !== currentTrackToken) return false;
 
-            if (ok) return true;
+            if (ok) {
+                syncPlayPauseButtons();
+                return true;
+            }
         }
-
-
-        // intento 3 — usar preload
 
         if (audioPreload.src) {
 
@@ -1826,17 +1968,18 @@ async function recoverPlaybackIfNeeded() {
 
             if (token !== currentTrackToken) return false;
 
-            if (ok) return true;
+            if (ok) {
+                syncPlayPauseButtons();
+                return true;
+            }
         }
 
+        syncPlayPauseButtons();
         return false;
 
     } finally {
-
         recoveringAudio = false;
-
     }
-
 }
 
 
@@ -1858,13 +2001,13 @@ async function playFromQueue(index) {
     const track = queue[currentIndex];
     if (!track || !track.url) return;
     
-
+   await fadeOutAudio();
    setAudioSource(track);
 
 if (token !== currentTrackToken) return;
 
 updateNowPlayingUI(track);
-
+vibrateShort();
 setupMediaSession(track);
 
     if (isShuffle) {
@@ -1874,6 +2017,9 @@ setupMediaSession(track);
     preloadUpcomingTrack();
 
     let played = await forceResumePlayback();
+    if (played) {
+    fadeInAudio();
+}
 
     if (token !== currentTrackToken) return;
 
@@ -1894,14 +2040,15 @@ if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex] && token
     } catch {}
 }
 
-    syncPlayPauseButtons();
-    syncMediaSessionState();
-    if (token !== currentTrackToken) return;
+   syncPlayPauseButtons();
+syncMediaSessionState();
+if (token !== currentTrackToken) return;
 
-    if ("mediaSession" in navigator) {
-       navigator.mediaSession.playbackState = "playing";
-    }
+if ("mediaSession" in navigator) {
+   navigator.mediaSession.playbackState = "playing";
+}
 
+savePlayerState();
 render();
 }
 
@@ -1916,6 +2063,8 @@ function pause(userInitiated = false) {
     isPlaying = false;
 
     syncPlayPauseButtons();
+    syncMediaSessionState();
+    savePlayerState();
 
     if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "paused";
@@ -1952,6 +2101,7 @@ async function resume() {
 
     syncPlayPauseButtons();
     syncMediaSessionState();
+    savePlayerState();
 
 }
 
@@ -1967,11 +2117,15 @@ playBtn.onclick = async () => {
     if (clickingPlay) return;
     clickingPlay = true;
 
+    vibrateShort(); 
+
     if (audio.src && !audio.paused) {
         pause(true);
     } else {
         await resume();
     }
+
+    
 
     setTimeout(() => clickingPlay = false, 200);
 };
@@ -1979,8 +2133,11 @@ playBtn.onclick = async () => {
 
 
 prevBtn.onclick = async () => {
+    vibrateShort();
     queue = buildQueueForCurrentView();
     if (!queue.length) return;
+    
+    
 
     const prevIndex = getPrevIndex();
     if (prevIndex < 0) return;
@@ -1989,12 +2146,14 @@ prevBtn.onclick = async () => {
         const pos = shuffleOrder.indexOf(prevIndex);
         if (pos >= 0) shufflePos = pos;
     }
-
+     
+    
     await playFromQueue(prevIndex);
 };
 
 
 nextBtn.onclick = async () => {
+    vibrateShort();
     queue = buildQueueForCurrentView();
     if (!queue.length) return;
 
@@ -2008,7 +2167,7 @@ nextBtn.onclick = async () => {
         const pos = shuffleOrder.indexOf(nextIndex);
         if (pos >= 0) shufflePos = pos;
     }
-
+    
     await playFromQueue(nextIndex);
 };
 
@@ -2049,6 +2208,7 @@ shuffleFull?.addEventListener("click", () => {
 
     syncShuffleButtons();
     preloadUpcomingTrack();
+    savePlayerState();
 });
 
 shuffleBtn?.addEventListener("click", () => {
@@ -2062,6 +2222,7 @@ shuffleBtn?.addEventListener("click", () => {
 
     syncShuffleButtons();
     preloadUpcomingTrack();
+    savePlayerState();
 });
 
 repeatFull?.addEventListener("click", () => cycleRepeatMode());
@@ -2092,6 +2253,7 @@ addToCollectionBtn?.addEventListener("click", () => {
 if (vol) {
     vol.addEventListener("input", () => {
         audio.volume = Number(vol.value);
+        savePlayerState();
     });
 }
 
@@ -2160,43 +2322,27 @@ audio.addEventListener("timeupdate", () => {
     }
 
     updatePositionState();
+    savePlayerState();
 });
 
 
 
 audio.addEventListener("playing", () => {
-
     isPlaying = true;
-
     syncPlayPauseButtons();
-    syncMediaSessionState();
-
-    if (!audio.paused) {
-        updatePositionState();
-    }
-
+    updatePositionState();
 });
 
 
 audio.addEventListener("play", () => {
     isPlaying = true;
     syncPlayPauseButtons();
-
-    if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "playing";
-    }
 });
 
 
 audio.addEventListener("pause", () => {
-
-    if (userPaused) {
-        isPlaying = false;
-    }
-
+    isPlaying = false;
     syncPlayPauseButtons();
-    syncMediaSessionState();
-
 });
 
 

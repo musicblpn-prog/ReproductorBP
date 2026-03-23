@@ -773,6 +773,13 @@ padding-bottom: calc(12px + env(safe-area-inset-bottom));
     0 20px 60px rgba(0,0,0,.6),
     0 0 40px rgba(255,45,85,.2);
 
+
+
+  transition: 
+  transform 0.25s ease,
+  opacity 0.25s ease,
+  filter 0.25s ease; 
+
   transition:
     transform .3s ease,
     box-shadow .3s ease,
@@ -1384,3 +1391,19 @@ input{
 
 }
 
+
+
+/*EFECTO SUAVE*/
+#nowPlaying {
+
+    transition: opacity 0.25s ease,
+                transform 0.25s ease;
+
+}
+
+.np-hidden {
+
+    opacity: 0;
+    transform: translateY(20px);
+
+}

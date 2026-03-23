@@ -82,6 +82,17 @@ const inCover = document.getElementById("inCover");
 // FULL PLAYER
 
 const nowPlaying = document.getElementById("nowPlaying");
+//
+nowPlaying?.addEventListener("click", (e) => {
+
+    if (!e.target.closest(".np-body")) {
+
+        nowPlaying.classList.add("np-hidden");
+
+    }
+
+});
+//
 const closeNowPlaying = document.getElementById("closeNowPlaying");
 const npBg = document.getElementById("npBg");
 
@@ -1919,12 +1930,23 @@ function pause(userInitiated = false) {
 
 async function resume() {
 
-    userPaused = false; 
+    userPaused = false;
+
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
         setAudioSource(queue[currentIndex]);
     }
 
-    const ok = await forceResumePlayback();
+    let ok = await forceResumePlayback();
+
+    if (!ok && currentIndex >= 0 && queue[currentIndex]) {
+
+        const track = queue[currentIndex];
+
+        audio.src = fixDropbox(track.url);
+
+        ok = await safePlayAudio();
+
+    }
 
     isPlaying = ok;
 

@@ -290,7 +290,7 @@ body{
   left:0;
   right:0;
   bottom:0;
-
+padding-bottom: calc(12px + env(safe-area-inset-bottom));
   z-index:50;
 
   display:grid;
@@ -654,7 +654,10 @@ body{
   display:flex;
   flex-direction:column;
 
-  padding:18px;
+  padding-top: calc(18px + env(safe-area-inset-top));
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  padding-left: 18px;
+  padding-right: 18px;
 
   overflow:hidden;
 
@@ -734,6 +737,8 @@ body{
   max-width:520px;
 
   margin:auto;
+
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 
   border-radius:18px;
 

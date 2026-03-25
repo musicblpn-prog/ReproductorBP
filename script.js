@@ -1749,29 +1749,37 @@ function setupMediaSession(track) {
                 : []
         });
 
-        navigator.mediaSession.setActionHandler("play", async () => {
+   navigator.mediaSession.setActionHandler("play", async () => {
 
     userPaused = false;
 
     await resume();
 
-    // FIX iOS — forzar audio real
-    if (audio.paused && audio.src) {
+    if (audio.paused && currentIndex >= 0 && queue[currentIndex]) {
 
         try {
-            await audio.play();
+
+            const track = queue[currentIndex];
+
+            audio.src = fixDropbox(track.url);
+
+            audio.load();
+
+            await safePlayAudio();
+
         } catch {}
 
-        setTimeout(async () => {
-
-            if (audio.paused) {
-
-                await recoverPlaybackIfNeeded();
-
-            }
-
-        }, 300);
     }
+
+    setTimeout(async () => {
+
+        if (audio.paused) {
+
+            await recoverPlaybackIfNeeded();
+
+        }
+
+    }, 300);
 
 });
 
@@ -2029,7 +2037,9 @@ if (audio.src) {
 
 async function playFromQueue(index) {
 
+    if (!queue.length) {
     queue = buildQueueForCurrentView();
+}
 
     if (index < 0 || index >= queue.length) return;
 
@@ -2042,6 +2052,8 @@ async function playFromQueue(index) {
     
    await fadeOutAudio();
    setAudioSource(track);
+
+   audio.load(); 
 
 if (token !== currentTrackToken) return;
 
@@ -2144,6 +2156,24 @@ async function resume() {
         } catch {}
 
     }
+
+//
+if (!ok && currentIndex >= 0 && queue[currentIndex]) {
+
+    try {
+
+        const track = queue[currentIndex];
+
+        audio.src = fixDropbox(track.url);
+
+        audio.load();
+
+        ok = await safePlayAudio();
+
+    } catch {}
+
+}
+//
 
     isPlaying = ok;
 
@@ -2614,7 +2644,7 @@ setInterval(async () => {
 
     lastAudioCheck = now;
 
-    if (audio.paused && !audio.ended) {
+    if (audio.paused && !audio.ended && !userPaused) {
 
         await recoverPlaybackIfNeeded();
 

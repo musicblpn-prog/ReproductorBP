@@ -32,6 +32,8 @@ const npTitle = document.getElementById("npTitle");
 const npSub = document.getElementById("npSub");
 const coverEl = document.getElementById("cover");
 
+const npContext = document.getElementById("npContext");
+
 const listEl = document.getElementById("list");
 const emptyEl = document.getElementById("empty");
 const crumbsEl = document.getElementById("crumbs");
@@ -79,6 +81,8 @@ const inUrl = document.getElementById("inUrl");
 const inCover = document.getElementById("inCover");
 
 
+
+
 // FULL PLAYER
 
 const nowPlaying = document.getElementById("nowPlaying");
@@ -99,6 +103,7 @@ const npBg = document.getElementById("npBg");
 const bigTitle = document.getElementById("bigTitle");
 const bigArtist = document.getElementById("bigArtist");
 const bigCover = document.getElementById("bigCover");
+const bigContext = document.getElementById("bigContext");
 
 const seekFull = document.getElementById("seekFull");
 
@@ -618,6 +623,32 @@ function favoriteTracks() {
 }
 
 
+function getQueueContextLabel() {
+
+    if (!queueContext || !queueContext.type) {
+        return "Sin cola activa";
+    }
+
+    if (queueContext.type === "favorites") {
+        return "Reproduciendo desde Favoritos";
+    }
+
+    if (queueContext.type === "collection") {
+        return `Reproduciendo desde ${queueContext.name || "Colección"}`;
+    }
+
+    if (queueContext.type === "album") {
+        return `Reproduciendo desde ${queueContext.album || "Álbum"}`;
+    }
+
+    if (queueContext.type === "all") {
+        return "Reproduciendo desde Todas las canciones";
+    }
+
+    return "Sin cola activa";
+}
+
+
 // =====================================================
 // BUILD QUEUE
 // =====================================================
@@ -633,10 +664,7 @@ function buildQueueForCurrentView() {
 
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-        tracks.sort((a, b) =>
-            (a.artist + a.album + a.title)
-                .localeCompare(b.artist + b.album + b.title)
-        );
+        
 
         return tracks;
     }
@@ -646,14 +674,13 @@ function buildQueueForCurrentView() {
         queueContext = { type: "collection", name: selectedAlbum };
 
         const trackIds = library.collections[selectedAlbum] || [];
-        let tracks = allTracks().filter(t => trackIds.includes(t.id));
 
+let tracks = trackIds
+    .map(id => allTracks().find(t => t.id === id))
+    .filter(Boolean);
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-        tracks.sort((a, b) =>
-            (a.artist + a.album + a.title)
-                .localeCompare(b.artist + b.album + b.title)
-        );
+       
 
         return tracks;
     }
@@ -665,11 +692,7 @@ function buildQueueForCurrentView() {
         let tracks = (library.genres[selectedGenre]?.albums?.[selectedAlbum]?.tracks ?? [])
             .map(t => ({ ...t, genre: selectedGenre, album: selectedAlbum }));
 
-        tracks.sort((a, b) =>
-            (a.artist + a.album + a.title)
-                .localeCompare(b.artist + b.album + b.title)
-        );
-
+    
         return tracks;
     }
 
@@ -680,11 +703,7 @@ function buildQueueForCurrentView() {
 
     if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-    tracks.sort((a, b) =>
-        (a.artist + a.album + a.title)
-            .localeCompare(b.artist + b.album + b.title)
-    );
-
+   
     return tracks;
 }
 
@@ -935,10 +954,13 @@ listEl.appendChild(div);
             tracks = tracks.filter(t => matchTrack(t, q));
         }
 
-        tracks.sort((a, b) =>
-            (a.artist + a.album + a.title)
-                .localeCompare(b.artist + b.album + b.title)
-        );
+      // SOLO ordenar si es búsqueda
+if (q) {
+    tracks.sort((a, b) =>
+        (a.artist + a.album + a.title)
+            .localeCompare(b.artist + b.album + b.title)
+    );
+}
 
         queue = tracks;
 
@@ -1254,13 +1276,16 @@ dayBtn.onclick = (e) => {
     div.querySelector(".play-btn").onclick = (e) => {
         e.stopPropagation();
 
-        queue = buildQueueForCurrentView();
+        const newQueue = buildQueueForCurrentView();
 
-        const realIndex = queue.findIndex(t => t.id === track.id);
+const realIndex = newQueue.findIndex(t => t.id === track.id);
 
-        if (realIndex >= 0) {
-            playFromQueue(realIndex);
-        }
+if (realIndex >= 0) {
+    queue = newQueue; // 👈 solo aquí se cambia la cola
+    playFromQueue(realIndex);
+}
+
+     
     };
 
     return div;
@@ -1411,6 +1436,13 @@ function updateNowPlayingUI(track) {
         `${track.artist || ""} · ${track.genre || ""} · ${track.album || ""}`;
 
 
+
+
+        if (npContext) {
+    npContext.textContent = getQueueContextLabel();
+}
+
+
     if (track.cover) {
 
         coverEl.style.backgroundImage = `url("${track.cover}")`;
@@ -1435,6 +1467,10 @@ function updateNowPlayingUI(track) {
 
     bigArtist.textContent =
         `${track.artist || "—"} · ${track.genre || "—"} · ${track.album || "—"}`;
+
+        if (bigContext) {
+    bigContext.textContent = getQueueContextLabel();
+}
 
 
     if (track.cover) {
@@ -1958,6 +1994,38 @@ async function recoverPlaybackIfNeeded() {
     if (!audio.src) return false;
     if (userPaused) return false;
     if (!audio.paused) return true;
+    // 🧠 DETECTAR AUDIO MUDO (iOS BUG)
+if (!audio.paused && audio.currentTime > 0) {
+
+    try {
+
+        const prevTime = audio.currentTime;
+
+        await new Promise(r => setTimeout(r, 300));
+
+        // si el tiempo avanza pero sospechamos audio muerto
+        if (audio.currentTime > prevTime) {
+
+            // FORZAR RESET REAL
+            const currentSrc = audio.src;
+
+            audio.pause();
+            audio.src = "";
+            audio.load();
+
+            audio.src = currentSrc;
+
+            await safePlayAudio();
+
+            syncPlayPauseButtons();
+
+            return true;
+
+        }
+
+    } catch {}
+
+}
 
     recoveringAudio = true;
 
@@ -2045,6 +2113,7 @@ async function playFromQueue(index) {
 
     const token = ++currentTrackToken;
 
+
     currentIndex = index;
 
     const track = queue[currentIndex];
@@ -2052,6 +2121,7 @@ async function playFromQueue(index) {
     
    await fadeOutAudio();
    setAudioSource(track);
+   if (token !== currentTrackToken) return;
 
    audio.load(); 
 
@@ -2068,6 +2138,7 @@ setupMediaSession(track);
     preloadUpcomingTrack();
 
     let played = await forceResumePlayback();
+    if (token !== currentTrackToken) return;
     if (played) {
     fadeInAudio();
 }
@@ -2100,6 +2171,7 @@ if ("mediaSession" in navigator) {
 }
 
 savePlayerState();
+if (token !== currentTrackToken) return;
 render();
 }
 
@@ -2125,6 +2197,13 @@ function pause(userInitiated = false) {
         wasPlayingBeforeHide = false;
         userPaused = true;
     }
+
+
+if (currentIndex < 0) {
+    if (npContext) npContext.textContent = "Sin cola activa";
+    if (bigContext) bigContext.textContent = "Sin cola activa";
+}
+
 }
 
 
@@ -2212,7 +2291,9 @@ playBtn.onclick = async () => {
 
 prevBtn.onclick = async () => {
     vibrateShort();
+    if (!queue.length) {
     queue = buildQueueForCurrentView();
+}
     if (!queue.length) return;
     
     
@@ -2232,7 +2313,9 @@ prevBtn.onclick = async () => {
 
 nextBtn.onclick = async () => {
     vibrateShort();
+    if (!queue.length) {
     queue = buildQueueForCurrentView();
+}
     if (!queue.length) return;
 
     const nextIndex = getNextIndex();
@@ -2443,7 +2526,9 @@ audio.addEventListener("pause", () => {
 
 audio.addEventListener("ended", async () => {
 
+    if (!queue.length) {
     queue = buildQueueForCurrentView();
+}
 
     if (!queue.length) return;
 

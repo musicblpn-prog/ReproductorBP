@@ -381,6 +381,16 @@ padding-bottom: calc(12px + env(safe-area-inset-bottom));
 
 }
 
+.np-context{
+  margin-top:4px;
+  font-size:11px;
+  color:var(--accent2);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  opacity:.95;
+}
+
 
 /* ---------- CENTER ---------- */
 
@@ -813,6 +823,15 @@ padding-bottom: calc(12px + env(safe-area-inset-bottom));
 
   color:var(--muted);
 
+}
+
+
+.big-context{
+  margin-top:8px;
+  text-align:center;
+  font-size:12px;
+  color:var(--accent2);
+  opacity:.95;
 }
 
 

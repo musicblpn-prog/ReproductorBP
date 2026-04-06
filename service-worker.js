@@ -135,16 +135,47 @@ self.addEventListener("fetch", (event) => {
   }
 
   // MP3 / audio remotos: NO cache agresivo todavía
-  if (
-    request.destination === "audio" ||
-    url.pathname.endsWith(".mp3") ||
-    url.pathname.endsWith(".m4a") ||
-    url.pathname.endsWith(".aac")
-  ) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
+if (
+  request.destination === "audio" ||
+  url.pathname.endsWith(".mp3") ||
+  url.pathname.endsWith(".m4a") ||
+  url.pathname.endsWith(".aac")
+) {
+
+  event.respondWith(
+
+    caches.open(CACHE_RUNTIME).then(async (cache) => {
+
+      const cached = await cache.match(request);
+
+      if (cached) {
+        return cached;
+      }
+
+      try {
+
+        const response = await fetch(request);
+
+        cache.put(request, response.clone());
+
+        return response;
+
+      } catch (err) {
+
+        if (cached) return cached;
+
+        throw err;
+
+      }
+
+    })
+
+  );
+
+  return;
+}
 
   // Default
   event.respondWith(networkFirst(request));
 });
+

@@ -2526,10 +2526,6 @@ audio.addEventListener("pause", () => {
 
 audio.addEventListener("ended", async () => {
 
-    if (!queue.length) {
-    queue = buildQueueForCurrentView();
-}
-
     if (!queue.length) return;
 
 

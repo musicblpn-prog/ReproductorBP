@@ -365,7 +365,7 @@ function loadFavorites() {
 function saveMusicDay() {
   localStorage.setItem(
     LS_DAY,
-    JSON.stringify([...musicDay])
+    JSON.stringify(library.collections["Music Day"] ?? [])
   );
 }
 
@@ -424,13 +424,14 @@ async function restorePlayerState() {
 
     if (!saved.trackId) return;
 
-    const tracks = allTracks();
-    queue = tracks;
-    const foundIndex = tracks.findIndex(t => t.id === saved.trackId);
+    queue = allTracks();
+queueContext = { type: "all" };
+
+const foundIndex = queue.findIndex(t => t.id === saved.trackId);
 
     if (foundIndex < 0) return;
 
-    queue = tracks;
+    
     currentIndex = foundIndex;
 
     const track = queue[currentIndex];
@@ -962,7 +963,7 @@ if (q) {
     );
 }
 
-        queue = tracks;
+        
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -1105,7 +1106,7 @@ if (q) {
                 .localeCompare(b.artist + b.album + b.title)
         );
 
-        queue = tracks;
+        
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -2105,10 +2106,7 @@ if (audio.src) {
 
 async function playFromQueue(index) {
 
-    if (!queue.length) {
-    queue = buildQueueForCurrentView();
-}
-
+ 
     if (index < 0 || index >= queue.length) return;
 
     const token = ++currentTrackToken;
@@ -2291,9 +2289,8 @@ playBtn.onclick = async () => {
 
 prevBtn.onclick = async () => {
     vibrateShort();
-    if (!queue.length) {
-    queue = buildQueueForCurrentView();
-}
+   
+
     if (!queue.length) return;
     
     
@@ -2313,9 +2310,7 @@ prevBtn.onclick = async () => {
 
 nextBtn.onclick = async () => {
     vibrateShort();
-    if (!queue.length) {
-    queue = buildQueueForCurrentView();
-}
+ 
     if (!queue.length) return;
 
     const nextIndex = getNextIndex();

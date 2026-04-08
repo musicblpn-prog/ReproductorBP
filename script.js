@@ -1218,6 +1218,10 @@ function songRow(track, idx) {
 
     const activeText = isCurrentTrack ? " · Reproduciendo" : "";
 
+    const isOffline =
+    (library.collections["Offline"] ?? []).includes(track.id);
+
+
     div.innerHTML = `
         <div class="song-left">
             <div class="song-cover">${track.cover ? "" : "♪"}</div>

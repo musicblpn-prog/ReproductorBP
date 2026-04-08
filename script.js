@@ -140,6 +140,7 @@ library.collections ??= {};
 
 library.collections["Music Day"] ??= [];
 library.collections["Favoritos"] ??= [];
+library.collections["Offline"] ??= [];
 
 let favorites = loadFavorites();
 
@@ -175,6 +176,7 @@ let isUserSeeking = false;
 audio.volume = Number(vol.value);
 
 render();
+updateOfflineStorageUI();
 restorePlayerState();
 initDB();
 
@@ -477,10 +479,10 @@ async function updateOfflineStorageUI() {
     if (!el) return;
 
     const bytes = await getOfflineSize();
+
     const mb = (bytes / (1024 * 1024)).toFixed(2);
 
     el.textContent = `Offline: ${mb} MB / ${OFFLINE_LIMIT_MB} MB`;
-
 }
 
 
@@ -1235,7 +1237,9 @@ function songRow(track, idx) {
                     <span class="day-btn">
         ${(library.collections["Music Day"] ?? []).includes(track.id) ? "🌞" : "☀️"}
     </span>
-    <span class="offline-btn">⬇️</span>
+    <span class="offline-btn">
+    ${isOffline ? "📦" : "⬇️"}
+</span>
                     <span class="delete-btn">🗑</span>
                 </div>
             </div>
@@ -1257,6 +1261,11 @@ function songRow(track, idx) {
 
 const offlineBtn = div.querySelector(".offline-btn");
 
+const isOfflineInLibrary =
+    (library.collections["Offline"] ?? []).includes(track.id);
+
+offlineBtn.textContent = isOfflineInLibrary ? "📦" : "⬇️";
+
 isTrackOffline(track.id).then(isOffline => {
 
     offlineBtn.textContent = isOffline ? "📦" : "⬇️";
@@ -1269,19 +1278,25 @@ offlineBtn.onclick = async (e) => {
 
     const isOffline = await isTrackOffline(track.id);
 
-    if (isOffline) {
+   if (isOffline) {
 
-        await deleteOfflineTrack(track.id);
+    await deleteOfflineTrack(track.id);
 
-        offlineBtn.textContent = "⬇️";
+    library.collections["Offline"] =
+        (library.collections["Offline"] ?? []).filter(id => id !== track.id);
 
-    } else {
+    saveLibrary();
 
-        await downloadTrack(track);
+    updateOfflineStorageUI();
 
-        offlineBtn.textContent = "📦";
+    offlineBtn.textContent = "⬇️";
 
-    }
+} else {
+
+    await downloadTrack(track);
+
+    offlineBtn.textContent = "📦";
+}
 
 };
 
@@ -1598,6 +1613,18 @@ setTimeout(() => {
         npBg.style.backgroundImage = `url("${track.cover}")`;
 
     }
+
+    const isOffline =
+    (library.collections["Offline"] ?? []).includes(track.id);
+
+const contextText = isOffline
+    ? "Reproduciendo desde Offline"
+    : (queueContext.type === "album"
+        ? `Reproduciendo desde ${track.album}`
+        : "Reproduciendo");
+
+if (npContext) npContext.textContent = contextText;
+if (bigContext) bigContext.textContent = contextText;
 
 }
 
@@ -1919,22 +1946,22 @@ function updatePositionState() {
 // CARGAR TRACK EN AUDIO
 // =====================================================
 
-async function setAudioSource(track){
+async function setAudioSource(track) {
 
-    if(!track) return false;
+    // primero intentar offline
+    const offline = await getOfflineTrack(track.id);
 
-    const src = await getPlayableUrl(track);
+    if (offline && offline.blob) {
 
-    if(!src) return false;
+        const url = URL.createObjectURL(offline.blob);
+        audio.src = url;
 
-    if(audio.src === src){
         return true;
     }
 
-
-    if(audio.src.startsWith("blob:")){
-    URL.revokeObjectURL(audio.src);
-}
+    //  fallback online
+    const src = fixDropbox(track.url || "");
+    if (!src) return false;
 
     audio.src = src;
 
@@ -2755,9 +2782,21 @@ window.addEventListener("blur", () => {
 
 
 // cuando cambia conexión (muy importante en iPhone)
-window.addEventListener("offline", () => {
+window.addEventListener("offline", async () => {
 
     wasPlayingBeforeHide = !audio.paused;
+
+    if (currentIndex >= 0 && queue[currentIndex]) {
+
+        const track = queue[currentIndex];
+
+        const offline = await getOfflineTrack(track.id);
+
+        if (offline) {
+            audio.src = URL.createObjectURL(offline.blob);
+            await audio.play();
+        }
+    }
 
 });
 
@@ -3255,8 +3294,10 @@ async function getOfflineSize() {
 
     req.onsuccess = () => {
 
-      const total = req.result.reduce((acc, t) => acc + (t.size || 0), 0);
-
+      const total = req.result.reduce(
+    (acc, t) => acc + (t.size || 0),
+    0
+);
       resolve(total);
 
     };
@@ -3284,6 +3325,13 @@ if (currentSize >= limitBytes) {
 
 
     await saveOfflineTrack(track, blob);
+
+    library.collections["Offline"] ??= [];
+
+if (!library.collections["Offline"].includes(track.id)) {
+    library.collections["Offline"].push(track.id);
+    saveLibrary();
+}
 
     console.log("Descargada:", track.title);
 

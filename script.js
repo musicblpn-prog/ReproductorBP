@@ -540,15 +540,25 @@ function cryptoId() {
 // DROPBOX FIX
 // =====================================================
 
-function fixDropbox(url) {
+function fixDropbox(url = "") {
 
     if (!url.includes("dropbox.com")) return url;
 
-    //  limpiar parámetros
-    url = url.split("?")[0];
+    //  caso 1: ya es dominio directo (NO tocar)
+    if (url.includes("dl.dropboxusercontent.com")) {
+        return url;
+    }
 
-    // usar formato oficial de descarga
-    return url + "?dl=1";
+    //  caso 2: convertir dl=0 o raw=1 → dl=1
+    if (url.includes("?")) {
+        url = url
+            .replace("dl=0", "dl=1")
+            .replace("raw=1", "dl=1");
+    } else {
+        url += "?dl=1";
+    }
+
+    return url;
 }
 
 

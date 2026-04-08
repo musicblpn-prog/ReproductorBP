@@ -544,17 +544,11 @@ function fixDropbox(url) {
 
     if (!url.includes("dropbox.com")) return url;
 
-    url = url
-        .replace("www.dropbox.com", "dl.dropboxusercontent.com")
-        .replace("&raw=1", "")
-        .replace(/&st=[^&]+/, "");
+    //  limpiar parámetros
+    url = url.split("?")[0];
 
-    //  asegurar descarga real
-    if (!url.includes("?dl=1")) {
-        url += "?dl=1";
-    }
-
-    return url;
+    // usar formato oficial de descarga
+    return url + "?dl=1";
 }
 
 

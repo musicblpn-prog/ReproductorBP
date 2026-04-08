@@ -1282,25 +1282,40 @@ offlineBtn.onclick = async (e) => {
 
     const isOffline = await isTrackOffline(track.id);
 
-   if (isOffline) {
+    if (isOffline) {
 
-    await deleteOfflineTrack(track.id);
+        //  ELIMINAR
+        await deleteOfflineTrack(track.id);
 
-    library.collections["Offline"] =
-        (library.collections["Offline"] ?? []).filter(id => id !== track.id);
+        library.collections["Offline"] =
+            (library.collections["Offline"] ?? []).filter(id => id !== track.id);
 
-    saveLibrary();
+        saveLibrary();
 
-    updateOfflineStorageUI();
+        updateOfflineStorageUI();
 
-    offlineBtn.textContent = "⬇️";
+        offlineBtn.textContent = "⬇️";
 
-} else {
+    } else {
 
-    await downloadTrack(track);
+        // DESCARGAR
+        await downloadTrack(track);
 
-    offlineBtn.textContent = "📦";
-}
+        library.collections["Offline"] ??= [];
+
+        if (!library.collections["Offline"].includes(track.id)) {
+            library.collections["Offline"].push(track.id);
+        }
+
+        saveLibrary();
+
+        updateOfflineStorageUI();
+
+        offlineBtn.textContent = "📦";
+
+    }
+
+    render(); // importante refrescar UI
 
 };
 

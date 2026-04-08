@@ -3358,20 +3358,15 @@ async function downloadTrack(track) {
 
     try {
 
-        const url = fixDropbox(track.url);
+        const currentSrc = audio.src;
 
-        const res = await fetch(url, {
-            method: "GET",
-            mode: "cors"
-        });
-
-        if (!res.ok) {
-            throw new Error("Error en la descarga");
+        if (!currentSrc) {
+            alert("Primero reproduce la canción");
+            return false;
         }
 
+        const res = await fetch(currentSrc);
         const blob = await res.blob();
-
-        console.log("Descargado:", blob.size, "bytes");
 
         await saveOfflineTrack(track, blob);
 
@@ -3379,13 +3374,12 @@ async function downloadTrack(track) {
 
     } catch (err) {
 
-        console.error("ERROR DESCARGANDO:", err);
-
-        alert("No se pudo descargar la canción");
+        console.error(err);
+        alert("No se pudo guardar");
 
         return false;
     }
-}
+} 
 
 async function isTrackOffline(id) {
 

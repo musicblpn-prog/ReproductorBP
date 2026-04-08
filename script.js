@@ -3356,40 +3356,35 @@ async function getOfflineSize() {
 
 async function downloadTrack(track) {
 
-  try {
+    try {
 
-    const res = await fetch(track.url);
+        const url = fixDropbox(track.url);
 
-    const blob = await res.blob();
+        const res = await fetch(url, {
+            method: "GET",
+            mode: "cors"
+        });
 
+        if (!res.ok) {
+            throw new Error("Error en la descarga");
+        }
 
-    const currentSize = await getOfflineSize();
-const limitBytes = OFFLINE_LIMIT_MB * 1024 * 1024;
+        const blob = await res.blob();
 
-if (currentSize >= limitBytes) {
-    alert("Límite offline alcanzado (" + OFFLINE_LIMIT_MB + " MB)");
-    return;
-}
+        console.log("Descargado:", blob.size, "bytes");
 
+        await saveOfflineTrack(track, blob);
 
-    await saveOfflineTrack(track, blob);
+        return true;
 
-    library.collections["Offline"] ??= [];
+    } catch (err) {
 
-if (!library.collections["Offline"].includes(track.id)) {
-    library.collections["Offline"].push(track.id);
-    saveLibrary();
-}
+        console.error("ERROR DESCARGANDO:", err);
 
-    console.log("Descargada:", track.title);
+        alert("No se pudo descargar la canción");
 
-  } catch (e) {
-
-    console.error("Error descargando:", e);
-
-  }
-
-  await updateOfflineStorageUI();
+        return false;
+    }
 }
 
 async function isTrackOffline(id) {

@@ -1292,31 +1292,50 @@ offlineBtn.onclick = async (e) => {
 
         saveLibrary();
 
-        updateOfflineStorageUI();
+        await updateOfflineStorageUI();
 
         offlineBtn.textContent = "⬇️";
 
+        render();
+
     } else {
 
-        // DESCARGAR
+        //  DESCARGAR
         await downloadTrack(track);
 
-        library.collections["Offline"] ??= [];
+        //  ESPERAR CONFIRMACIÓN REAL EN IndexedDB
+        let confirm = false;
 
-        if (!library.collections["Offline"].includes(track.id)) {
-            library.collections["Offline"].push(track.id);
+        for (let i = 0; i < 5; i++) {
+
+            const exists = await isTrackOffline(track.id);
+
+            if (exists) {
+                confirm = true;
+                break;
+            }
+
+            await new Promise(r => setTimeout(r, 100));
         }
 
-        saveLibrary();
+        //  SOLO SI SE GUARDÓ BIEN
+        if (confirm) {
 
-        updateOfflineStorageUI();
+            library.collections["Offline"] ??= [];
 
-        offlineBtn.textContent = "📦";
+            if (!library.collections["Offline"].includes(track.id)) {
+                library.collections["Offline"].push(track.id);
+            }
 
+            saveLibrary();
+
+            await updateOfflineStorageUI();
+
+            offlineBtn.textContent = "📦";
+
+            render();
+        }
     }
-
-    render(); // importante refrescar UI
-
 };
 
 
@@ -3360,7 +3379,7 @@ if (!library.collections["Offline"].includes(track.id)) {
 
   }
 
-  updateOfflineStorageUI();
+  await updateOfflineStorageUI();
 }
 
 async function isTrackOffline(id) {

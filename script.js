@@ -79,7 +79,7 @@ const inGenre = document.getElementById("inGenre");
 const inAlbum = document.getElementById("inAlbum");
 const inUrl = document.getElementById("inUrl");
 const inCover = document.getElementById("inCover");
-
+const OFFLINE_LIMIT_MB = 80;
 
 
 
@@ -176,7 +176,7 @@ audio.volume = Number(vol.value);
 
 render();
 restorePlayerState();
-
+initDB();
 
 // =====================================================
 // STORAGE
@@ -437,9 +437,9 @@ const foundIndex = queue.findIndex(t => t.id === saved.trackId);
     const track = queue[currentIndex];
     if (!track) return;
 
-    setAudioSource(track);
-    updateNowPlayingUI(track);
-    setupMediaSession(track);
+    await setAudioSource(track);
+updateNowPlayingUI(track);
+setupMediaSession(track);
 
     const applySavedTime = () => {
         if (
@@ -468,6 +468,21 @@ const foundIndex = queue.findIndex(t => t.id === saved.trackId);
 // =====================================================
 // HELPERS
 // =====================================================
+
+//offline
+
+async function updateOfflineStorageUI() {
+
+    const el = document.getElementById("offlineInfo");
+    if (!el) return;
+
+    const bytes = await getOfflineSize();
+    const mb = (bytes / (1024 * 1024)).toFixed(2);
+
+    el.textContent = `Offline: ${mb} MB / ${OFFLINE_LIMIT_MB} MB`;
+
+}
+
 
 //
 function vibrateShort() {
@@ -878,6 +893,7 @@ function render() {
 
     const hasAny = allTracks().length > 0;
     emptyEl.classList.toggle("hidden", hasAny);
+    updateOfflineStorageUI();
 
     if (!hasAny) return;
 
@@ -1114,6 +1130,8 @@ if (q) {
 
         return;
     }
+
+    
 }
 
 
@@ -1217,6 +1235,7 @@ function songRow(track, idx) {
                     <span class="day-btn">
         ${(library.collections["Music Day"] ?? []).includes(track.id) ? "🌞" : "☀️"}
     </span>
+    <span class="offline-btn">⬇️</span>
                     <span class="delete-btn">🗑</span>
                 </div>
             </div>
@@ -1233,6 +1252,40 @@ function songRow(track, idx) {
     }
 
     const favBtn = div.querySelector(".fav-btn");
+
+//offline
+
+const offlineBtn = div.querySelector(".offline-btn");
+
+isTrackOffline(track.id).then(isOffline => {
+
+    offlineBtn.textContent = isOffline ? "📦" : "⬇️";
+
+});
+
+offlineBtn.onclick = async (e) => {
+
+    e.stopPropagation();
+
+    const isOffline = await isTrackOffline(track.id);
+
+    if (isOffline) {
+
+        await deleteOfflineTrack(track.id);
+
+        offlineBtn.textContent = "⬇️";
+
+    } else {
+
+        await downloadTrack(track);
+
+        offlineBtn.textContent = "📦";
+
+    }
+
+};
+
+
 
 //Music Day
 
@@ -1798,11 +1851,11 @@ function setupMediaSession(track) {
 
             const track = queue[currentIndex];
 
-            audio.src = fixDropbox(track.url);
+await setAudioSource(track);
 
-            audio.load();
+audio.load();
 
-            await safePlayAudio();
+await safePlayAudio();
 
         } catch {}
 
@@ -1866,14 +1919,22 @@ function updatePositionState() {
 // CARGAR TRACK EN AUDIO
 // =====================================================
 
-function setAudioSource(track) {
+async function setAudioSource(track){
 
-    const src = fixDropbox(track.url || "");
-    if (!src) return false;
+    if(!track) return false;
 
-    if (audio.src === src) {
+    const src = await getPlayableUrl(track);
+
+    if(!src) return false;
+
+    if(audio.src === src){
         return true;
     }
+
+
+    if(audio.src.startsWith("blob:")){
+    URL.revokeObjectURL(audio.src);
+}
 
     audio.src = src;
 
@@ -1886,6 +1947,8 @@ function setAudioSource(track) {
 // =====================================================
 
 async function safePlayAudio() {
+
+    if(!audio.src) return false;
 
     const token = currentTrackToken;
 
@@ -1967,8 +2030,8 @@ async function fadeInAudio() {
 async function forceResumePlayback() {
 
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
-        setAudioSource(queue[currentIndex]);
-    }
+    await setAudioSource(queue[currentIndex]);
+}
 
     if (!audio.src) return false;
 
@@ -2043,12 +2106,14 @@ if (!audio.paused && audio.currentTime > 0) {
 
         if (currentIndex >= 0 && queue[currentIndex]) {
 
-            const track = queue[currentIndex];
-            const src = fixDropbox(track.url);
+           const track = queue[currentIndex];
+const recoveryTrackId = track?.id;
 
-            audio.src = src;
+await setAudioSource(track);
 
-            ok = await safePlayAudio();
+if (queue[currentIndex]?.id !== recoveryTrackId) return false;
+
+ok = await safePlayAudio();
 
             if (token !== currentTrackToken) return false;
 
@@ -2107,6 +2172,7 @@ if (audio.src) {
 async function playFromQueue(index) {
 
  
+    
     if (index < 0 || index >= queue.length) return;
 
     const token = ++currentTrackToken;
@@ -2114,11 +2180,15 @@ async function playFromQueue(index) {
 
     currentIndex = index;
 
-    const track = queue[currentIndex];
-    if (!track || !track.url) return;
+    const track = queue[index];
+
+if(!track) return;
+
+// validar que sigue siendo el mismo track
+const currentId = track.id;
     
    await fadeOutAudio();
-   setAudioSource(track);
+   await setAudioSource(track);
    if (token !== currentTrackToken) return;
 
    audio.load(); 
@@ -2154,8 +2224,8 @@ if (!played && audio.paused && audioPreload.src && token === currentTrackToken) 
 
 if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex] && token === currentTrackToken) {
     try {
-        audio.src = fixDropbox(queue[currentIndex].url);
-        const retryPlayed = await safePlayAudio();
+        await setAudioSource(queue[currentIndex]);
+const retryPlayed = await safePlayAudio();
         if (retryPlayed) played = true;
     } catch {}
 }
@@ -2170,7 +2240,11 @@ if ("mediaSession" in navigator) {
 
 savePlayerState();
 if (token !== currentTrackToken) return;
-render();
+
+
+if(view === "songs" || view === "collectionSongs"){
+    render();
+}
 }
 
 // =====================================================
@@ -2209,9 +2283,9 @@ async function resume() {
 
     userPaused = false;
 
-    if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
-        setAudioSource(queue[currentIndex]);
-    }
+   if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
+    await setAudioSource(queue[currentIndex]);
+}
 
     let ok = await forceResumePlayback();
 
@@ -3081,7 +3155,171 @@ saveSong.onclick = () => {
 
     closeModalFn();
     render();
+    
 };
+
+
+
+//==============================
+// MODO OFFLINE
+//==============================
+
+// =====================================================
+// OFFLINE DB (IndexedDB)
+// =====================================================
+
+const DB_NAME = "mi_music_offline_db";
+const DB_VERSION = 1;
+const STORE_NAME = "tracks";
+
+let db = null;
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+    };
+
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+
+    request.onerror = () => reject(request.error);
+
+  });
+}
+
+async function saveOfflineTrack(track, blob) {
+
+  if (!db) await initDB();
+
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+
+  store.put({
+    id: track.id,
+    blob: blob,
+    size: blob.size
+  });
+
+  return tx.complete;
+}
+
+async function getOfflineTrack(id) {
+
+  if (!db) await initDB();
+
+  return new Promise((resolve) => {
+
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+
+    const req = store.get(id);
+
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+
+  });
+}
+
+
+async function deleteOfflineTrack(id) {
+
+  if (!db) await initDB();
+
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+
+  store.delete(id);
+updateOfflineStorageUI();
+}
+
+async function getOfflineSize() {
+
+  if (!db) await initDB();
+
+  return new Promise((resolve) => {
+
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+
+      const total = req.result.reduce((acc, t) => acc + (t.size || 0), 0);
+
+      resolve(total);
+
+    };
+
+  });
+}
+
+
+async function downloadTrack(track) {
+
+  try {
+
+    const res = await fetch(track.url);
+
+    const blob = await res.blob();
+
+
+    const currentSize = await getOfflineSize();
+const limitBytes = OFFLINE_LIMIT_MB * 1024 * 1024;
+
+if (currentSize >= limitBytes) {
+    alert("Límite offline alcanzado (" + OFFLINE_LIMIT_MB + " MB)");
+    return;
+}
+
+
+    await saveOfflineTrack(track, blob);
+
+    console.log("Descargada:", track.title);
+
+  } catch (e) {
+
+    console.error("Error descargando:", e);
+
+  }
+
+  updateOfflineStorageUI();
+}
+
+async function isTrackOffline(id) {
+
+  const data = await getOfflineTrack(id);
+
+  return !!data;
+
+}
+
+
+async function getPlayableUrl(track){
+
+    if(!track?.id) return track.url;
+
+    const offline = await getOfflineTrack(track.id);
+
+    //  PRIORIDAD TOTAL OFFLINE
+    if(offline?.blob){
+        return URL.createObjectURL(offline.blob);
+    }
+
+    //  fallback solo si no existe offline
+    return fixDropbox(track.url);
+
+}
 
 
 

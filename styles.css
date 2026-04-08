@@ -1426,3 +1426,24 @@ input{
     transform: translateY(20px);
 
 }
+
+/*offline*/
+.offline-btn{
+  cursor:pointer;
+  font-size:16px;
+  opacity:.7;
+  transition:.2s;
+}
+
+.offline-btn:hover{
+  opacity:1;
+  transform:scale(1.1);
+}
+
+
+.offline-info{
+  margin-top:10px;
+  font-size:12px;
+  color:var(--accent2);
+  opacity:.9;
+}

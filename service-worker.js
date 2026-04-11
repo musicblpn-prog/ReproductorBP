@@ -50,17 +50,20 @@ async function networkFirst(request) {
 
   try {
     const fresh = await fetch(request);
-    cache.put(request, fresh.clone());
-    return fresh;
-  } catch {
-    const cached = await cache.match(request);
-    if (cached) return cached;
 
-    if (request.mode === "navigate") {
-      return caches.match("./index.html");
+    if (fresh && fresh.status === 200) {
+      cache.put(request, fresh.clone());
     }
 
-    throw new Error("Sin red y sin caché");
+    return fresh;
+
+  } catch {
+
+    const cached = await cache.match(request);
+
+    if (cached) return cached;
+
+    return caches.match("./index.html");
   }
 }
 
@@ -70,7 +73,12 @@ async function cacheFirst(request) {
 
   const fresh = await fetch(request);
   const cache = await caches.open(CACHE_RUNTIME);
-  cache.put(request, fresh.clone());
+
+  if (fresh && fresh.status === 200) {
+    cache.put(request, fresh.clone());
+    limitCacheSize(CACHE_RUNTIME, 60);
+  }
+
   return fresh;
 }
 
@@ -86,6 +94,17 @@ async function staleWhileRevalidate(request) {
     .catch(() => null);
 
   return cached || networkFetch || fetch(request);
+}
+
+
+async function limitCacheSize(cacheName, maxItems) {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+
+  if (keys.length > maxItems) {
+    await cache.delete(keys[0]);
+    limitCacheSize(cacheName, maxItems);
+  }
 }
 
 // ================================
@@ -148,15 +167,18 @@ if (
 
       const cached = await cache.match(request);
 
-      if (cached) {
-        return cached;
-      }
+      //  si ya está cacheado → respuesta inmediata
+      if (cached) return cached;
 
       try {
 
         const response = await fetch(request);
 
-        cache.put(request, response.clone());
+        //  solo cachear si es válido
+        if (response && response.status === 200) {
+          cache.put(request, response.clone());
+          limitCacheSize(CACHE_RUNTIME, 50); //  límite
+        }
 
         return response;
 

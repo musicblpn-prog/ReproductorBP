@@ -2115,6 +2115,7 @@ async function playFromQueue(index) {
 
         if (audio.readyState === 0) {
     audio.load();
+    navigator.mediaSession.playbackState = "none";
 }
         if (token !== currentTrackToken) return;
 
@@ -2122,10 +2123,11 @@ async function playFromQueue(index) {
             advanceShufflePosToIndex(index);
         }
 
-       const played = await safePlayAudio();
+const played = await safePlayAudio();
 if (token !== currentTrackToken) return;
 
 if (played) {
+    navigator.mediaSession.playbackState = "playing";
     await fadeInAudio();
     preloadUpcomingTrack();
 }

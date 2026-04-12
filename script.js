@@ -153,7 +153,7 @@ let selectedAlbum = null;
 
 let queue = [];
 let currentIndex = -1;
-let currentQueueId = 0;
+
 let isPlaying = false;
 
 let isShuffle = false;
@@ -426,7 +426,6 @@ async function restorePlayerState() {
 
     queue = allTracks();
 queueContext = { type: "all" };
-currentQueueId++;
 
 const foundIndex = queue.findIndex(t => t.id === saved.trackId);
 
@@ -1284,7 +1283,6 @@ const realIndex = newQueue.findIndex(t => t.id === track.id);
 
 if (realIndex >= 0) {
     queue = newQueue; // 👈 solo aquí se cambia la cola
-    currentQueueId++;
     playFromQueue(realIndex);
 }
 
@@ -1673,32 +1671,6 @@ function rebuildShuffleKeepingCurrent() {
     }
 }
 
-function getNextIndexFrom(index) {
-
-    if (!queue.length) return -1;
-
-    if (isShuffle) {
-
-        const pos = shuffleOrder.indexOf(index);
-
-        const nextPos = pos + 1;
-
-        if (nextPos >= shuffleOrder.length) {
-            return repeatMode === "all" ? shuffleOrder[0] : -1;
-        }
-
-        return shuffleOrder[nextPos];
-    }
-
-    const next = index + 1;
-
-    if (next >= queue.length) {
-        return repeatMode === "all" ? 0 : -1;
-    }
-
-    return next;
-}
-
 
 function getNextIndex() {
     if (!queue.length) return -1;
@@ -1777,71 +1749,16 @@ function preloadSpecificIndex(index) {
     const nextTrack = queue[index];
     if (!nextTrack?.url) return;
 
-    const preloadQueueId = currentQueueId;
-
     audioPreload.src = fixDropbox(nextTrack.url);
-    audioPreload.preload = "auto";
     audioPreload.load();
-
-    audioPreload.oncanplaythrough = () => {
-        if (preloadQueueId !== currentQueueId) {
-            audioPreload.src = "";
-        }
-    };
 }
 
 
 function preloadUpcomingTrack() {
-
-    if (!queue.length) return;
-
-    const preloadQueueId = currentQueueId;
-
-    //  PRIMERA canción siguiente
     const nextIndex = getNextIndex();
-
-    if (nextIndex >= 0 && nextIndex < queue.length) {
-
-        const track1 = queue[nextIndex];
-
-        if (track1?.url) {
-
-            audioPreload.src = fixDropbox(track1.url);
-            audioPreload.preload = "auto";
-            audioPreload.load();
-
-        }
+    if (nextIndex >= 0) {
+        preloadSpecificIndex(nextIndex);
     }
-
-    //  SEGUNDA canción (doble buffer lógico)
-    const secondIndex = nextIndex >= 0 ? getNextIndexFrom(nextIndex) : -1;
-
-    if (secondIndex >= 0 && secondIndex < queue.length) {
-
-        const track2 = queue[secondIndex];
-
-        if (track2?.url) {
-
-            const tempAudio = new Audio();
-
-            tempAudio.src = fixDropbox(track2.url);
-            tempAudio.preload = "auto";
-            tempAudio.load();
-
-            //  liberar después
-            tempAudio.oncanplaythrough = () => {
-            tempAudio.src = "";
-};
-
-        }
-    }
-
-    //  PROTECCIÓN
-    audioPreload.oncanplaythrough = () => {
-        if (preloadQueueId !== currentQueueId) {
-            audioPreload.src = "";
-        }
-    };
 }
 
 
@@ -2201,31 +2118,23 @@ async function playFromQueue(index) {
     if (!track || !track.url) return;
     
    await fadeOutAudio();
+   setAudioSource(track);
+   if (token !== currentTrackToken) return;
 
-// 1. actualizar UI primero
+   audio.load(); 
+
+if (token !== currentTrackToken) return;
+
 updateNowPlayingUI(track);
 vibrateShort();
 setupMediaSession(track);
-
-// 2. luego cargar audio
-setAudioSource(track);
-
-//  verificación inmediata después de cambiar src
-if (token !== currentTrackToken) return;
-
-//  asegurar que el src sí cambió antes de cargar
-if (!audio.src) return;
-
-audio.load();
-
-//  verificación después de load
-if (token !== currentTrackToken) return;
 
     if (isShuffle) {
         advanceShufflePosToIndex(index);
     }
 
     preloadUpcomingTrack();
+
     let played = await forceResumePlayback();
     if (token !== currentTrackToken) return;
     if (played) {

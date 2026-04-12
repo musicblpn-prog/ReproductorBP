@@ -1,5 +1,6 @@
-const CACHE_STATIC = "mi-music-static-v2";
-const CACHE_RUNTIME = "mi-music-runtime-v2";
+const VERSION = "v3";
+const CACHE_STATIC = `mi-music-static-${VERSION}`;
+const CACHE_RUNTIME = `mi-music-runtime-${VERSION}`;
 
 const APP_SHELL = [
   "./",
@@ -93,7 +94,7 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => null);
 
-  return cached || networkFetch || fetch(request);
+  return cached || networkFetch || Promise.resolve(cached);
 }
 
 
@@ -103,7 +104,7 @@ async function limitCacheSize(cacheName, maxItems) {
 
   if (keys.length > maxItems) {
     await cache.delete(keys[0]);
-    limitCacheSize(cacheName, maxItems);
+return limitCacheSize(cacheName, maxItems);
   }
 }
 
@@ -174,13 +175,17 @@ if (
 
         const response = await fetch(request);
 
-        //  solo cachear si es válido
-        if (response && response.status === 200) {
-          cache.put(request, response.clone());
-          limitCacheSize(CACHE_RUNTIME, 50); //  límite
-        }
+//  SOLO cachear audios válidos de Dropbox
+if (
+  response &&
+  (response.status === 200 || response.status === 206) &&
+  request.url.includes("dropboxusercontent")
+) {
+  cache.put(request, response.clone());
+  limitCacheSize(CACHE_RUNTIME, 50);
+}
 
-        return response;
+return response;
 
       } catch (err) {
 

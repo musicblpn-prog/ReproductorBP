@@ -1570,8 +1570,7 @@ function syncMediaSessionState() {
     const playing =
         !!audio.src &&
         !audio.paused &&
-        !audio.ended &&
-        audio.readyState >= 2;
+        !audio.ended;
 
     try {
 
@@ -2113,8 +2112,10 @@ async function playFromQueue(index) {
         //  Validación extra importante
         if (!audio.src) return;
 
-        if (audio.readyState === 0) {
-    audio.load();
+audio.load();
+
+//  SIEMPRE limpiar estado
+if ("mediaSession" in navigator) {
     navigator.mediaSession.playbackState = "none";
 }
         if (token !== currentTrackToken) return;

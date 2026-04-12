@@ -2099,7 +2099,7 @@ async function playFromQueue(index) {
     }
 
     try {
-        await fadeOutAudio();
+       fadeOutAudio(); // sin await
 
         vibrateShort();
         updateNowPlayingUI(track);
@@ -2124,12 +2124,21 @@ if ("mediaSession" in navigator) {
             advanceShufflePosToIndex(index);
         }
 
-const played = await safePlayAudio();
+// PRIMERO intento rápido
+let played = await forceResumePlayback();
+
+//  fallback seguro
+if (!played) {
+    played = await safePlayAudio();
+}
+
 if (token !== currentTrackToken) return;
 
 if (played) {
     navigator.mediaSession.playbackState = "playing";
-    await fadeInAudio();
+
+    fadeInAudio(); //  SIN await → más rápido
+
     preloadUpcomingTrack();
 }
 

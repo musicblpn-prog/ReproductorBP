@@ -32,8 +32,6 @@ const npTitle = document.getElementById("npTitle");
 const npSub = document.getElementById("npSub");
 const coverEl = document.getElementById("cover");
 
-const npContext = document.getElementById("npContext");
-
 const listEl = document.getElementById("list");
 const emptyEl = document.getElementById("empty");
 const crumbsEl = document.getElementById("crumbs");
@@ -81,8 +79,6 @@ const inUrl = document.getElementById("inUrl");
 const inCover = document.getElementById("inCover");
 
 
-
-
 // FULL PLAYER
 
 const nowPlaying = document.getElementById("nowPlaying");
@@ -103,7 +99,6 @@ const npBg = document.getElementById("npBg");
 const bigTitle = document.getElementById("bigTitle");
 const bigArtist = document.getElementById("bigArtist");
 const bigCover = document.getElementById("bigCover");
-const bigContext = document.getElementById("bigContext");
 
 const seekFull = document.getElementById("seekFull");
 
@@ -153,7 +148,7 @@ let selectedAlbum = null;
 
 let queue = [];
 let currentIndex = -1;
-let currentQueueId = 0;
+
 let isPlaying = false;
 
 let isShuffle = false;
@@ -166,15 +161,7 @@ let previousView = null;
 
 let queueContext = { type: "all" };
 let isUserSeeking = false;
-let isInternalSwitch = false;
 
-
-let clickingNext = false;
-let clickingPrev = false;
-
-let switchingTrack = false;
-
-let lastStateSave = 0;
 
 // =====================================================
 // INIT
@@ -373,7 +360,7 @@ function loadFavorites() {
 function saveMusicDay() {
   localStorage.setItem(
     LS_DAY,
-    JSON.stringify(library.collections["Music Day"] ?? [])
+    JSON.stringify([...musicDay])
   );
 }
 
@@ -432,15 +419,13 @@ async function restorePlayerState() {
 
     if (!saved.trackId) return;
 
-    queue = allTracks();
-queueContext = { type: "all" };
-currentQueueId++;
-
-const foundIndex = queue.findIndex(t => t.id === saved.trackId);
+    const tracks = allTracks();
+    queue = tracks;
+    const foundIndex = tracks.findIndex(t => t.id === saved.trackId);
 
     if (foundIndex < 0) return;
 
-    
+    queue = tracks;
     currentIndex = foundIndex;
 
     const track = queue[currentIndex];
@@ -482,7 +467,7 @@ const foundIndex = queue.findIndex(t => t.id === saved.trackId);
 function vibrateShort() {
 
     if (navigator.vibrate) {
-        navigator.vibrate([5, 10]);
+        navigator.vibrate(10);
     }
 
 }
@@ -633,32 +618,6 @@ function favoriteTracks() {
 }
 
 
-function getQueueContextLabel() {
-
-    if (!queueContext || !queueContext.type) {
-        return "Sin cola activa";
-    }
-
-    if (queueContext.type === "favorites") {
-        return "Reproduciendo desde Favoritos";
-    }
-
-    if (queueContext.type === "collection") {
-        return `Reproduciendo desde ${queueContext.name || "Colección"}`;
-    }
-
-    if (queueContext.type === "album") {
-        return `Reproduciendo desde ${queueContext.album || "Álbum"}`;
-    }
-
-    if (queueContext.type === "all") {
-        return "Reproduciendo desde Todas las canciones";
-    }
-
-    return "Sin cola activa";
-}
-
-
 // =====================================================
 // BUILD QUEUE
 // =====================================================
@@ -674,7 +633,11 @@ function buildQueueForCurrentView() {
 
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-        tracks = sortTracksForPlayback(tracks);
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
+
         return tracks;
     }
 
@@ -683,16 +646,14 @@ function buildQueueForCurrentView() {
         queueContext = { type: "collection", name: selectedAlbum };
 
         const trackIds = library.collections[selectedAlbum] || [];
-
-        let tracks = trackIds
-            .map(id => allTracks().find(t => t.id === id))
-            .filter(Boolean);
+        let tracks = allTracks().filter(t => trackIds.includes(t.id));
 
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-        // Si quieres respetar el orden manual de la colección, NO ordenar aquí.
-        // Si quieres que se vea igual y se reproduzca igual, déjalo así:
-        tracks = sortTracksForPlayback(tracks);
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
 
         return tracks;
     }
@@ -704,7 +665,11 @@ function buildQueueForCurrentView() {
         let tracks = (library.genres[selectedGenre]?.albums?.[selectedAlbum]?.tracks ?? [])
             .map(t => ({ ...t, genre: selectedGenre, album: selectedAlbum }));
 
-        tracks = sortTracksForPlayback(tracks);
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
+
         return tracks;
     }
 
@@ -715,7 +680,11 @@ function buildQueueForCurrentView() {
 
     if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-    tracks = sortTracksForPlayback(tracks);
+    tracks.sort((a, b) =>
+        (a.artist + a.album + a.title)
+            .localeCompare(b.artist + b.album + b.title)
+    );
+
     return tracks;
 }
 
@@ -836,13 +805,6 @@ function matchTrack(track, query) {
     ].some(value => (value ?? "").toLowerCase().includes(q));
 }
 
-function sortTracksForPlayback(tracks) {
-    return [...tracks].sort((a, b) =>
-        `${a.artist || ""}${a.album || ""}${a.title || ""}`
-            .localeCompare(`${b.artist || ""}${b.album || ""}${b.title || ""}`)
-    );
-}
-
 
 function cleanFavorites() {
 
@@ -959,29 +921,33 @@ listEl.appendChild(div);
     // =================================================
     // VISTA: CANCIONES DE COLECCIÓN
     // =================================================
-  if (view === "collectionSongs") {
-    let tracks = [];
+    if (view === "collectionSongs") {
+        let tracks = [];
 
-    if (selectedAlbum === "Favoritos") {
-        tracks = favoriteTracks();
-    } else {
-        const trackIds = library.collections[selectedAlbum] ?? [];
-        tracks = allTracks().filter(t => trackIds.includes(t.id));
+        if (selectedAlbum === "Favoritos") {
+            tracks = favoriteTracks();
+        } else {
+            const trackIds = library.collections[selectedAlbum] ?? [];
+            tracks = allTracks().filter(t => trackIds.includes(t.id));
+        }
+
+        if (q) {
+            tracks = tracks.filter(t => matchTrack(t, q));
+        }
+
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
+
+        queue = tracks;
+
+        tracks.forEach((track, idx) => {
+            listEl.appendChild(songRow(track, idx));
+        });
+
+        return;
     }
-
-    if (q) {
-        tracks = tracks.filter(t => matchTrack(t, q));
-    }
-
-    //  SIEMPRE ordenar (clave para estabilidad)
-    tracks = sortTracksForPlayback(tracks);
-
-    tracks.forEach((track, idx) => {
-        listEl.appendChild(songRow(track, idx));
-    });
-
-    return;
-}
 
     // =================================================
     // VISTA: GÉNEROS
@@ -1112,9 +1078,12 @@ listEl.appendChild(div);
             tracks = tracks.filter(track => matchTrack(track, q));
         }
 
-       tracks = sortTracksForPlayback(tracks);
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
 
-        
+        queue = tracks;
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -1241,65 +1210,84 @@ function songRow(track, idx) {
     }
 
     const favBtn = div.querySelector(".fav-btn");
-    const dayBtn = div.querySelector(".day-btn");
 
-    // Music Day
-    dayBtn.onclick = (e) => {
-        e.stopPropagation();
+//Music Day
 
-        const arr = library.collections["Music Day"] ?? [];
-        const i = arr.indexOf(track.id);
+const dayBtn = div.querySelector(".day-btn");
 
-        if (i >= 0) {
-            arr.splice(i, 1);
-        } else {
-            arr.push(track.id);
-        }
+dayBtn.onclick = (e) => {
 
-        library.collections["Music Day"] = arr;
+    e.stopPropagation();
 
-        saveLibrary();
-        render();
-    };
+    const arr = library.collections["Music Day"] ?? [];
 
-    // Favoritos
+    const i = arr.indexOf(track.id);
+
+    if (i >= 0) {
+        arr.splice(i, 1);
+    } else {
+        arr.push(track.id);
+    }
+
+    library.collections["Music Day"] = arr;
+
+    saveLibrary();
+
+    render();
+
+};
+
+//
     favBtn.classList.toggle("active", favorites.has(track.id));
 
+    
     favBtn.onclick = (e) => {
         e.stopPropagation();
         toggleFavorite(track);
     };
 
-    // Eliminar
     div.querySelector(".delete-btn").onclick = (e) => {
         e.stopPropagation();
         deleteSong(track);
     };
 
-    // Play
-    let clickingSong = false;
-
-    div.querySelector(".play-btn").onclick = async (e) => {
+    div.querySelector(".play-btn").onclick = (e) => {
         e.stopPropagation();
 
-        if (clickingSong) return;
-        clickingSong = true;
+        queue = buildQueueForCurrentView();
 
-        try {
-            const newQueue = buildQueueForCurrentView();
-            const realIndex = newQueue.findIndex(t => t.id === track.id);
+        const realIndex = queue.findIndex(t => t.id === track.id);
 
-            if (realIndex >= 0) {
-                queue = newQueue;
-                currentQueueId++;
-                await playFromQueue(realIndex);
-            }
-        } finally {
-            setTimeout(() => clickingSong = false, 200);
+        if (realIndex >= 0) {
+            playFromQueue(realIndex);
         }
     };
 
-    return div; //  ESTA ERA LA CLAVE
+    return div;
+}
+
+
+// =====================================================
+// FAVORITOS
+// =====================================================
+
+function toggleFavorite(track) {
+    if (!track?.id) return;
+
+    if (favorites.has(track.id)) {
+        favorites.delete(track.id);
+    } else {
+        favorites.add(track.id);
+    }
+
+    saveFavorites();
+
+    if (favFullBtn && currentIndex >= 0 && queue[currentIndex]?.id === track.id) {
+        favFullBtn.textContent = favorites.has(track.id) ? "❤️" : "🤍";
+        favFullBtn.classList.toggle("active", favorites.has(track.id));
+    }
+
+    render();
 }
 
 
@@ -1423,13 +1411,6 @@ function updateNowPlayingUI(track) {
         `${track.artist || ""} · ${track.genre || ""} · ${track.album || ""}`;
 
 
-
-
-        if (npContext) {
-    npContext.textContent = getQueueContextLabel();
-}
-
-
     if (track.cover) {
 
         coverEl.style.backgroundImage = `url("${track.cover}")`;
@@ -1455,17 +1436,13 @@ function updateNowPlayingUI(track) {
     bigArtist.textContent =
         `${track.artist || "—"} · ${track.genre || "—"} · ${track.album || "—"}`;
 
-        if (bigContext) {
-    bigContext.textContent = getQueueContextLabel();
-}
-
 
     if (track.cover) {
 
         // animación suave
         bigCover.classList.add("change");
 
-        bigCover.style.transform = "scale(0.92)";
+        bigCover.style.transform = "scale(0.95)";
 bigCover.style.opacity = "0.7";
 
 setTimeout(() => {
@@ -1570,7 +1547,8 @@ function syncMediaSessionState() {
     const playing =
         !!audio.src &&
         !audio.paused &&
-        !audio.ended;
+        !audio.ended &&
+        audio.readyState >= 2;
 
     try {
 
@@ -1656,32 +1634,6 @@ function rebuildShuffleKeepingCurrent() {
     }
 }
 
-function getNextIndexFrom(index) {
-
-    if (!queue.length) return -1;
-
-    if (isShuffle) {
-
-        const pos = shuffleOrder.indexOf(index);
-
-        const nextPos = pos + 1;
-
-        if (nextPos >= shuffleOrder.length) {
-            return repeatMode === "all" ? shuffleOrder[0] : -1;
-        }
-
-        return shuffleOrder[nextPos];
-    }
-
-    const next = index + 1;
-
-    if (next >= queue.length) {
-        return repeatMode === "all" ? 0 : -1;
-    }
-
-    return next;
-}
-
 
 function getNextIndex() {
     if (!queue.length) return -1;
@@ -1760,42 +1712,16 @@ function preloadSpecificIndex(index) {
     const nextTrack = queue[index];
     if (!nextTrack?.url) return;
 
-    const preloadQueueId = currentQueueId;
-
     audioPreload.src = fixDropbox(nextTrack.url);
-    audioPreload.preload = "auto";
     audioPreload.load();
-
-    audioPreload.oncanplaythrough = () => {
-        if (preloadQueueId !== currentQueueId) {
-            audioPreload.src = "";
-        }
-    };
 }
 
 
 function preloadUpcomingTrack() {
-
-    if (!queue.length) return;
-
     const nextIndex = getNextIndex();
-
-    if (nextIndex < 0 || nextIndex >= queue.length) return;
-
-    const track = queue[nextIndex];
-    if (!track?.url) return;
-
-    const preloadQueueId = currentQueueId;
-
-    audioPreload.src = fixDropbox(track.url);
-    audioPreload.preload = "auto";
-    audioPreload.load();
-
-    audioPreload.oncanplaythrough = () => {
-        if (preloadQueueId !== currentQueueId) {
-            audioPreload.src = "";
-        }
-    };
+    if (nextIndex >= 0) {
+        preloadSpecificIndex(nextIndex);
+    }
 }
 
 
@@ -2025,49 +1951,77 @@ async function forceResumePlayback() {
 
 
 async function recoverPlaybackIfNeeded() {
+
     const token = currentTrackToken;
 
     if (recoveringAudio) return false;
     if (!audio.src) return false;
     if (userPaused) return false;
-    if (isInternalSwitch) return false;
-    if (switchingTrack) return false;
-    if (document.hidden && !wasPlayingBeforeHide) return false;
     if (!audio.paused) return true;
 
     recoveringAudio = true;
 
     try {
+
         let ok = await forceResumePlayback();
 
         if (token !== currentTrackToken) return false;
 
         if (ok && !audio.paused) {
             syncPlayPauseButtons();
-            syncMediaSessionState();
             return true;
         }
 
         if (currentIndex >= 0 && queue[currentIndex]) {
-            const track = queue[currentIndex];
 
-            if (audio.readyState === 0) {
-    audio.load();
-}
+            const track = queue[currentIndex];
+            const src = fixDropbox(track.url);
+
+            audio.src = src;
 
             ok = await safePlayAudio();
 
             if (token !== currentTrackToken) return false;
 
-            if (ok && !audio.paused) {
+            if (ok) {
                 syncPlayPauseButtons();
-                syncMediaSessionState();
                 return true;
             }
         }
 
+        if (audioPreload.src) {
+
+            audio.src = audioPreload.src;
+
+            ok = await safePlayAudio();
+
+            if (token !== currentTrackToken) return false;
+
+            if (ok) {
+                syncPlayPauseButtons();
+                return true;
+            }
+        }
+
+        // FIX extra iOS suspendido
+if (audio.src) {
+
+    try {
+
+        audio.load();
+
+        ok = await safePlayAudio();
+
+        if (ok) {
+            syncPlayPauseButtons();
+            return true;
+        }
+
+    } catch {}
+
+}
+
         syncPlayPauseButtons();
-        syncMediaSessionState();
         return false;
 
     } finally {
@@ -2082,71 +2036,71 @@ async function recoverPlaybackIfNeeded() {
 // =====================================================
 
 async function playFromQueue(index) {
-    if (index < 0 || index >= queue.length) return;
-    if (switchingTrack) return;
 
-    switchingTrack = true;
-    isInternalSwitch = true;
+    if (!queue.length) {
+    queue = buildQueueForCurrentView();
+}
+
+    if (index < 0 || index >= queue.length) return;
 
     const token = ++currentTrackToken;
+
     currentIndex = index;
 
     const track = queue[currentIndex];
-    if (!track || !track.url) {
-        switchingTrack = false;
-        isInternalSwitch = false;
-        return;
-    }
+    if (!track || !track.url) return;
+    
+   await fadeOutAudio();
+   setAudioSource(track);
 
-    try {
-        await fadeOutAudio();
+   audio.load(); 
 
-        vibrateShort();
-        updateNowPlayingUI(track);
-        syncPlayPauseButtons();
-        setupMediaSession(track);
-
-        const okSrc = setAudioSource(track);
-        if (!okSrc || token !== currentTrackToken) return;
-
-        //  Validación extra importante
-        if (!audio.src) return;
-
-audio.load();
-
-//  SIEMPRE limpiar estado
-if ("mediaSession" in navigator) {
-    navigator.mediaSession.playbackState = "none";
-}
-        if (token !== currentTrackToken) return;
-
-        if (isShuffle) {
-            advanceShufflePosToIndex(index);
-        }
-
-const played = await safePlayAudio();
 if (token !== currentTrackToken) return;
 
-if (played) {
-    navigator.mediaSession.playbackState = "playing";
-    await fadeInAudio();
+updateNowPlayingUI(track);
+vibrateShort();
+setupMediaSession(track);
+
+    if (isShuffle) {
+        advanceShufflePosToIndex(index);
+    }
+
     preloadUpcomingTrack();
+
+    let played = await forceResumePlayback();
+    if (played) {
+    fadeInAudio();
 }
 
-        if (token !== currentTrackToken) return;
+    if (token !== currentTrackToken) return;
 
-        syncPlayPauseButtons();
-        syncMediaSessionState();
-        savePlayerState();
+    // Solo fallback si de verdad quedó pausado
+if (!played && audio.paused && audioPreload.src && token === currentTrackToken) {
+    try {
+        audio.src = audioPreload.src;
+        const preloadPlayed = await safePlayAudio();
+        if (preloadPlayed) played = true;
+    } catch {}
+}
 
-        //  IMPORTANTE: NO render aquí
+if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex] && token === currentTrackToken) {
+    try {
+        audio.src = fixDropbox(queue[currentIndex].url);
+        const retryPlayed = await safePlayAudio();
+        if (retryPlayed) played = true;
+    } catch {}
+}
 
-    } finally {
-        if (token === currentTrackToken) {
-            isInternalSwitch = false;
-        }
-        switchingTrack = false;
-    }
+   syncPlayPauseButtons();
+syncMediaSessionState();
+if (token !== currentTrackToken) return;
+
+if ("mediaSession" in navigator) {
+   navigator.mediaSession.playbackState = "playing";
+}
+
+savePlayerState();
+render();
 }
 
 // =====================================================
@@ -2171,36 +2125,62 @@ function pause(userInitiated = false) {
         wasPlayingBeforeHide = false;
         userPaused = true;
     }
-
-
-if (currentIndex < 0) {
-    if (npContext) npContext.textContent = "Sin cola activa";
-    if (bigContext) bigContext.textContent = "Sin cola activa";
-}
-
 }
 
 
 async function resume() {
+
     userPaused = false;
 
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
         setAudioSource(queue[currentIndex]);
-        audio.load();
     }
 
-    let ok = await safePlayAudio();
+    let ok = await forceResumePlayback();
 
     if (!ok && currentIndex >= 0 && queue[currentIndex]) {
-        setAudioSource(queue[currentIndex]);
-        audio.load();
+
+        const track = queue[currentIndex];
+
+        audio.src = fixDropbox(track.url);
+
         ok = await safePlayAudio();
     }
 
+    // FIX iOS suspendido
+    if (!ok && audio.src) {
+
+        try {
+            audio.load();
+            ok = await safePlayAudio();
+        } catch {}
+
+    }
+
+//
+if (!ok && currentIndex >= 0 && queue[currentIndex]) {
+
+    try {
+
+        const track = queue[currentIndex];
+
+        audio.src = fixDropbox(track.url);
+
+        audio.load();
+
+        ok = await safePlayAudio();
+
+    } catch {}
+
+}
+//
+
     isPlaying = ok;
+
     syncPlayPauseButtons();
     syncMediaSessionState();
     savePlayerState();
+
 }
 
 
@@ -2231,54 +2211,42 @@ playBtn.onclick = async () => {
 
 
 prevBtn.onclick = async () => {
-    if (clickingPrev) return;
-    clickingPrev = true;
+    vibrateShort();
+    queue = buildQueueForCurrentView();
+    if (!queue.length) return;
+    
+    
 
-    try {
-        vibrateShort();
+    const prevIndex = getPrevIndex();
+    if (prevIndex < 0) return;
 
-        if (!queue.length) return;
-
-        const prevIndex = getPrevIndex();
-        if (prevIndex < 0) return;
-
-        if (isShuffle) {
-            const pos = shuffleOrder.indexOf(prevIndex);
-            if (pos >= 0) shufflePos = pos;
-        }
-
-        await playFromQueue(prevIndex);
-    } finally {
-        setTimeout(() => clickingPrev = false, 180);
+    if (isShuffle) {
+        const pos = shuffleOrder.indexOf(prevIndex);
+        if (pos >= 0) shufflePos = pos;
     }
+     
+    
+    await playFromQueue(prevIndex);
 };
 
 
 nextBtn.onclick = async () => {
-    if (clickingNext) return;
-    clickingNext = true;
+    vibrateShort();
+    queue = buildQueueForCurrentView();
+    if (!queue.length) return;
 
-    try {
-        vibrateShort();
-
-        if (!queue.length) return;
-
-        const nextIndex = getNextIndex();
-        if (nextIndex < 0) {
-            pause();
-            return;
-        }
-
-        if (isShuffle) {
-            const pos = shuffleOrder.indexOf(nextIndex);
-            if (pos >= 0) shufflePos = pos;
-        }
-
-        await playFromQueue(nextIndex);
-
-    } finally {
-        setTimeout(() => clickingNext = false, 180);
+    const nextIndex = getNextIndex();
+    if (nextIndex < 0) {
+        pause();
+        return;
     }
+
+    if (isShuffle) {
+        const pos = shuffleOrder.indexOf(nextIndex);
+        if (pos >= 0) shufflePos = pos;
+    }
+    
+    await playFromQueue(nextIndex);
 };
 
 
@@ -2432,12 +2400,7 @@ audio.addEventListener("timeupdate", () => {
     }
 
     updatePositionState();
-
-    const now = Date.now();
-    if (now - lastStateSave > 3000) {
-        lastStateSave = now;
-        savePlayerState();
-    }
+    savePlayerState();
 });
 
 
@@ -2456,26 +2419,31 @@ audio.addEventListener("play", () => {
 
 
 audio.addEventListener("pause", () => {
+
     isPlaying = false;
     syncPlayPauseButtons();
 
-    if (userPaused) return;
-    if (isInternalSwitch) return;
-    if (switchingTrack) return;
+    // FIX iOS background
+    if (!userPaused) {
 
-    setTimeout(async () => {
-        if (userPaused) return;
-        if (isInternalSwitch) return;
-        if (switchingTrack) return;
+        setTimeout(async () => {
 
-        if (audio.paused) {
-            await recoverPlaybackIfNeeded();
-        }
-    }, 1000);
+            if (!userPaused && audio.paused) {
+
+                await recoverPlaybackIfNeeded();
+
+            }
+
+        }, 1000);
+
+    }
+
 });
 
 
 audio.addEventListener("ended", async () => {
+
+    queue = buildQueueForCurrentView();
 
     if (!queue.length) return;
 
@@ -2663,21 +2631,26 @@ window.addEventListener("focus", async () => {
 // =====================================================
 
 setInterval(async () => {
+
     if (userPaused) return;
+
     if (!audio.src) return;
-    if (isInternalSwitch) return;
-    if (switchingTrack) return;
-    if (recoveringAudio) return;
+
     if (document.hidden && !wasPlayingBeforeHide) return;
 
     const now = Date.now();
-    if (now - lastAudioCheck < 4000) return;
+
+    if (now - lastAudioCheck < 2000) return;
+
     lastAudioCheck = now;
 
-    if (audio.paused && !audio.ended) {
+    if (audio.paused && !audio.ended && !userPaused) {
+
         await recoverPlaybackIfNeeded();
+
     }
-}, 4000);
+
+}, 2000);
 
 
 // =====================================================

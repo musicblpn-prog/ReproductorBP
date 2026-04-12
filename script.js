@@ -175,6 +175,8 @@ let clickingPrev = false;
 let switchingTrack = false;
 
 let lastStateSave = 0;
+let isCrossfading = false;
+const CROSSFADE_TIME = 2.5; // segundos (puedes ajustar)
 
 // =====================================================
 // INIT
@@ -1544,22 +1546,18 @@ let lastPlayState = null;
 function syncPlayPauseButtons() {
 
     const playing =
+        isPlaying &&
         !!audio.src &&
-        !audio.paused &&
-        !audio.ended &&
-        audio.readyState >= 2;
+        !audio.ended;
 
     if (playing === lastPlayState) return;
 
     lastPlayState = playing;
 
-    isPlaying = playing;
-
     if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
     if (playFull) playFull.textContent = playing ? "⏸" : "▶";
 
-    syncMediaSessionState(); 
-
+    syncMediaSessionState();
 }
 
 
@@ -1779,8 +1777,7 @@ function preloadUpcomingTrack() {
     if (!queue.length) return;
 
     const nextIndex = getNextIndex();
-
-    if (nextIndex < 0 || nextIndex >= queue.length) return;
+    if (nextIndex < 0) return;
 
     const track = queue[nextIndex];
     if (!track?.url) return;
@@ -1788,8 +1785,16 @@ function preloadUpcomingTrack() {
     const preloadQueueId = currentQueueId;
 
     audioPreload.src = fixDropbox(track.url);
+
+    //  clave: forzar carga inmediata
     audioPreload.preload = "auto";
     audioPreload.load();
+
+    //  nueva mejora
+    audioPreload.play().then(() => {
+        audioPreload.pause();
+        audioPreload.currentTime = 0;
+    }).catch(() => {});
 
     audioPreload.oncanplaythrough = () => {
         if (preloadQueueId !== currentQueueId) {
@@ -1797,7 +1802,6 @@ function preloadUpcomingTrack() {
         }
     };
 }
-
 
 // =====================================================
 // MEDIA SESSION
@@ -2103,7 +2107,7 @@ async function playFromQueue(index) {
 
         vibrateShort();
         updateNowPlayingUI(track);
-        syncPlayPauseButtons();
+        
         setupMediaSession(track);
 
         const okSrc = setAudioSource(track);
@@ -2112,7 +2116,10 @@ async function playFromQueue(index) {
         //  Validación extra importante
         if (!audio.src) return;
 
-audio.load();
+//  SOLO recargar si es necesario
+if (audio.readyState === 0) {
+    audio.load();
+}
 
 //  SIEMPRE limpiar estado
 if ("mediaSession" in navigator) {
@@ -2135,10 +2142,18 @@ if (!played) {
 if (token !== currentTrackToken) return;
 
 if (played) {
-    navigator.mediaSession.playbackState = "playing";
 
-    fadeInAudio(); //  SIN await → más rápido
+    // 🔥 FORZAR estado inmediato (clave del fix)
+    isPlaying = true;
 
+    if (playBtn) playBtn.textContent = "⏸";
+    if (playFull) playFull.textContent = "⏸";
+
+    if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = "playing";
+    }
+
+    fadeInAudio();
     preloadUpcomingTrack();
 }
 
@@ -2157,6 +2172,58 @@ if (played) {
         switchingTrack = false;
     }
 }
+
+async function startCrossfade() {
+
+    if (isCrossfading) return;
+    if (!audioPreload.src) return;
+
+    isCrossfading = true;
+
+    try {
+
+        //  usar preload real
+        audioPreload.volume = 0;
+
+        await audioPreload.play();
+
+        const steps = 20;
+        const stepTime = (CROSSFADE_TIME * 1000) / steps;
+
+        const targetVol = Number(vol.value) || 1;
+
+        for (let i = 0; i <= steps; i++) {
+
+            const progress = i / steps;
+
+            audio.volume = (1 - progress) * targetVol;
+            audioPreload.volume = progress * targetVol;
+
+            await new Promise(r => setTimeout(r, stepTime));
+        }
+
+        //  swap limpio SIN corte
+        audio.pause();
+
+        audio.src = audioPreload.src;
+        audio.currentTime = audioPreload.currentTime;
+        audio.volume = targetVol;
+
+        await audio.play();
+
+        // limpiar preload
+        audioPreload.pause();
+        audioPreload.src = "";
+
+        isCrossfading = false;
+
+    } catch (e) {
+        console.log("Crossfade error", e);
+        isCrossfading = false;
+    }
+}
+
+
 
 // =====================================================
 // PAUSE / RESUME
@@ -2447,6 +2514,15 @@ audio.addEventListener("timeupdate", () => {
         lastStateSave = now;
         savePlayerState();
     }
+
+    //  activar crossfade antes de terminar
+if (
+    !isCrossfading &&
+    Number.isFinite(audio.duration) &&
+    audio.duration - audio.currentTime <= CROSSFADE_TIME
+) {
+    startCrossfade();
+}
 });
 
 
@@ -2487,7 +2563,7 @@ audio.addEventListener("pause", () => {
 audio.addEventListener("ended", async () => {
 
     if (!queue.length) return;
-
+    if (isCrossfading) return;
 
     if (repeatMode === "one") {
 

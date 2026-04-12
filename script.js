@@ -1241,92 +1241,65 @@ function songRow(track, idx) {
     }
 
     const favBtn = div.querySelector(".fav-btn");
+    const dayBtn = div.querySelector(".day-btn");
 
-//Music Day
+    // Music Day
+    dayBtn.onclick = (e) => {
+        e.stopPropagation();
 
-const dayBtn = div.querySelector(".day-btn");
+        const arr = library.collections["Music Day"] ?? [];
+        const i = arr.indexOf(track.id);
 
-dayBtn.onclick = (e) => {
+        if (i >= 0) {
+            arr.splice(i, 1);
+        } else {
+            arr.push(track.id);
+        }
 
-    e.stopPropagation();
+        library.collections["Music Day"] = arr;
 
-    const arr = library.collections["Music Day"] ?? [];
+        saveLibrary();
+        render();
+    };
 
-    const i = arr.indexOf(track.id);
-
-    if (i >= 0) {
-        arr.splice(i, 1);
-    } else {
-        arr.push(track.id);
-    }
-
-    library.collections["Music Day"] = arr;
-
-    saveLibrary();
-
-    render();
-
-};
-}
-
-//
+    // Favoritos
     favBtn.classList.toggle("active", favorites.has(track.id));
 
-    
     favBtn.onclick = (e) => {
         e.stopPropagation();
         toggleFavorite(track);
     };
 
+    // Eliminar
     div.querySelector(".delete-btn").onclick = (e) => {
         e.stopPropagation();
         deleteSong(track);
     };
 
-  let clickingSong = false;
+    // Play
+    let clickingSong = false;
 
-div.querySelector(".play-btn").onclick = async (e) => {
-    e.stopPropagation();
+    div.querySelector(".play-btn").onclick = async (e) => {
+        e.stopPropagation();
 
-    if (clickingSong) return;
-    clickingSong = true;
+        if (clickingSong) return;
+        clickingSong = true;
 
-    try {
-        const newQueue = buildQueueForCurrentView();
-        const realIndex = newQueue.findIndex(t => t.id === track.id);
+        try {
+            const newQueue = buildQueueForCurrentView();
+            const realIndex = newQueue.findIndex(t => t.id === track.id);
 
-        if (realIndex >= 0) {
-            queue = newQueue;
-            currentQueueId++;
-            await playFromQueue(realIndex);
+            if (realIndex >= 0) {
+                queue = newQueue;
+                currentQueueId++;
+                await playFromQueue(realIndex);
+            }
+        } finally {
+            setTimeout(() => clickingSong = false, 200);
         }
-    } finally {
-        setTimeout(() => clickingSong = false, 200);
-    }
-};
+    };
 
-
-// =====================================================
-// FAVORITOS
-// =====================================================
-
-function toggleFavorite(track) {
-    if (!track?.id) return;
-
-    if (favorites.has(track.id)) {
-        favorites.delete(track.id);
-    } else {
-        favorites.add(track.id);
-    }
-
-    saveFavorites();
-
-    if (favFullBtn && currentIndex >= 0 && queue[currentIndex]?.id === track.id) {
-        favFullBtn.textContent = favorites.has(track.id) ? "❤️" : "🤍";
-        favFullBtn.classList.toggle("active", favorites.has(track.id));
-    }
-
-    render();
+    return div; //  ESTA ERA LA CLAVE
 }
 
 

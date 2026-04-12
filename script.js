@@ -153,7 +153,7 @@ let selectedAlbum = null;
 
 let queue = [];
 let currentIndex = -1;
-
+let currentQueueId = 0;
 let isPlaying = false;
 
 let isShuffle = false;
@@ -166,7 +166,15 @@ let previousView = null;
 
 let queueContext = { type: "all" };
 let isUserSeeking = false;
+let isInternalSwitch = false;
 
+
+let clickingNext = false;
+let clickingPrev = false;
+
+let switchingTrack = false;
+
+let lastStateSave = 0;
 
 // =====================================================
 // INIT
@@ -426,6 +434,7 @@ async function restorePlayerState() {
 
     queue = allTracks();
 queueContext = { type: "all" };
+currentQueueId++;
 
 const foundIndex = queue.findIndex(t => t.id === saved.trackId);
 
@@ -473,7 +482,7 @@ const foundIndex = queue.findIndex(t => t.id === saved.trackId);
 function vibrateShort() {
 
     if (navigator.vibrate) {
-        navigator.vibrate(10);
+        navigator.vibrate([5, 10]);
     }
 
 }
@@ -665,8 +674,7 @@ function buildQueueForCurrentView() {
 
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-        
-
+        tracks = sortTracksForPlayback(tracks);
         return tracks;
     }
 
@@ -676,12 +684,15 @@ function buildQueueForCurrentView() {
 
         const trackIds = library.collections[selectedAlbum] || [];
 
-let tracks = trackIds
-    .map(id => allTracks().find(t => t.id === id))
-    .filter(Boolean);
+        let tracks = trackIds
+            .map(id => allTracks().find(t => t.id === id))
+            .filter(Boolean);
+
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-       
+        // Si quieres respetar el orden manual de la colección, NO ordenar aquí.
+        // Si quieres que se vea igual y se reproduzca igual, déjalo así:
+        tracks = sortTracksForPlayback(tracks);
 
         return tracks;
     }
@@ -693,7 +704,7 @@ let tracks = trackIds
         let tracks = (library.genres[selectedGenre]?.albums?.[selectedAlbum]?.tracks ?? [])
             .map(t => ({ ...t, genre: selectedGenre, album: selectedAlbum }));
 
-    
+        tracks = sortTracksForPlayback(tracks);
         return tracks;
     }
 
@@ -704,7 +715,7 @@ let tracks = trackIds
 
     if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-   
+    tracks = sortTracksForPlayback(tracks);
     return tracks;
 }
 
@@ -825,6 +836,13 @@ function matchTrack(track, query) {
     ].some(value => (value ?? "").toLowerCase().includes(q));
 }
 
+function sortTracksForPlayback(tracks) {
+    return [...tracks].sort((a, b) =>
+        `${a.artist || ""}${a.album || ""}${a.title || ""}`
+            .localeCompare(`${b.artist || ""}${b.album || ""}${b.title || ""}`)
+    );
+}
+
 
 function cleanFavorites() {
 
@@ -941,36 +959,29 @@ listEl.appendChild(div);
     // =================================================
     // VISTA: CANCIONES DE COLECCIÓN
     // =================================================
-    if (view === "collectionSongs") {
-        let tracks = [];
+  if (view === "collectionSongs") {
+    let tracks = [];
 
-        if (selectedAlbum === "Favoritos") {
-            tracks = favoriteTracks();
-        } else {
-            const trackIds = library.collections[selectedAlbum] ?? [];
-            tracks = allTracks().filter(t => trackIds.includes(t.id));
-        }
-
-        if (q) {
-            tracks = tracks.filter(t => matchTrack(t, q));
-        }
-
-      // SOLO ordenar si es búsqueda
-if (q) {
-    tracks.sort((a, b) =>
-        (a.artist + a.album + a.title)
-            .localeCompare(b.artist + b.album + b.title)
-    );
-}
-
-        
-
-        tracks.forEach((track, idx) => {
-            listEl.appendChild(songRow(track, idx));
-        });
-
-        return;
+    if (selectedAlbum === "Favoritos") {
+        tracks = favoriteTracks();
+    } else {
+        const trackIds = library.collections[selectedAlbum] ?? [];
+        tracks = allTracks().filter(t => trackIds.includes(t.id));
     }
+
+    if (q) {
+        tracks = tracks.filter(t => matchTrack(t, q));
+    }
+
+    //  SIEMPRE ordenar (clave para estabilidad)
+    tracks = sortTracksForPlayback(tracks);
+
+    tracks.forEach((track, idx) => {
+        listEl.appendChild(songRow(track, idx));
+    });
+
+    return;
+}
 
     // =================================================
     // VISTA: GÉNEROS
@@ -1101,10 +1112,7 @@ if (q) {
             tracks = tracks.filter(track => matchTrack(track, q));
         }
 
-        tracks.sort((a, b) =>
-            (a.artist + a.album + a.title)
-                .localeCompare(b.artist + b.album + b.title)
-        );
+       tracks = sortTracksForPlayback(tracks);
 
         
 
@@ -1259,6 +1267,7 @@ dayBtn.onclick = (e) => {
     render();
 
 };
+}
 
 //
     favBtn.classList.toggle("active", favorites.has(track.id));
@@ -1274,23 +1283,27 @@ dayBtn.onclick = (e) => {
         deleteSong(track);
     };
 
-    div.querySelector(".play-btn").onclick = (e) => {
-        e.stopPropagation();
+  let clickingSong = false;
 
+div.querySelector(".play-btn").onclick = async (e) => {
+    e.stopPropagation();
+
+    if (clickingSong) return;
+    clickingSong = true;
+
+    try {
         const newQueue = buildQueueForCurrentView();
+        const realIndex = newQueue.findIndex(t => t.id === track.id);
 
-const realIndex = newQueue.findIndex(t => t.id === track.id);
-
-if (realIndex >= 0) {
-    queue = newQueue; // 👈 solo aquí se cambia la cola
-    playFromQueue(realIndex);
-}
-
-     
-    };
-
-    return div;
-}
+        if (realIndex >= 0) {
+            queue = newQueue;
+            currentQueueId++;
+            await playFromQueue(realIndex);
+        }
+    } finally {
+        setTimeout(() => clickingSong = false, 200);
+    }
+};
 
 
 // =====================================================
@@ -1479,7 +1492,7 @@ function updateNowPlayingUI(track) {
         // animación suave
         bigCover.classList.add("change");
 
-        bigCover.style.transform = "scale(0.95)";
+        bigCover.style.transform = "scale(0.92)";
 bigCover.style.opacity = "0.7";
 
 setTimeout(() => {
@@ -1671,6 +1684,32 @@ function rebuildShuffleKeepingCurrent() {
     }
 }
 
+function getNextIndexFrom(index) {
+
+    if (!queue.length) return -1;
+
+    if (isShuffle) {
+
+        const pos = shuffleOrder.indexOf(index);
+
+        const nextPos = pos + 1;
+
+        if (nextPos >= shuffleOrder.length) {
+            return repeatMode === "all" ? shuffleOrder[0] : -1;
+        }
+
+        return shuffleOrder[nextPos];
+    }
+
+    const next = index + 1;
+
+    if (next >= queue.length) {
+        return repeatMode === "all" ? 0 : -1;
+    }
+
+    return next;
+}
+
 
 function getNextIndex() {
     if (!queue.length) return -1;
@@ -1749,16 +1788,42 @@ function preloadSpecificIndex(index) {
     const nextTrack = queue[index];
     if (!nextTrack?.url) return;
 
+    const preloadQueueId = currentQueueId;
+
     audioPreload.src = fixDropbox(nextTrack.url);
+    audioPreload.preload = "auto";
     audioPreload.load();
+
+    audioPreload.oncanplaythrough = () => {
+        if (preloadQueueId !== currentQueueId) {
+            audioPreload.src = "";
+        }
+    };
 }
 
 
 function preloadUpcomingTrack() {
+
+    if (!queue.length) return;
+
     const nextIndex = getNextIndex();
-    if (nextIndex >= 0) {
-        preloadSpecificIndex(nextIndex);
-    }
+
+    if (nextIndex < 0 || nextIndex >= queue.length) return;
+
+    const track = queue[nextIndex];
+    if (!track?.url) return;
+
+    const preloadQueueId = currentQueueId;
+
+    audioPreload.src = fixDropbox(track.url);
+    audioPreload.preload = "auto";
+    audioPreload.load();
+
+    audioPreload.oncanplaythrough = () => {
+        if (preloadQueueId !== currentQueueId) {
+            audioPreload.src = "";
+        }
+    };
 }
 
 
@@ -1988,109 +2053,49 @@ async function forceResumePlayback() {
 
 
 async function recoverPlaybackIfNeeded() {
-
     const token = currentTrackToken;
 
     if (recoveringAudio) return false;
     if (!audio.src) return false;
     if (userPaused) return false;
+    if (isInternalSwitch) return false;
+    if (switchingTrack) return false;
+    if (document.hidden && !wasPlayingBeforeHide) return false;
     if (!audio.paused) return true;
-    // 🧠 DETECTAR AUDIO MUDO (iOS BUG)
-if (!audio.paused && audio.currentTime > 0) {
-
-    try {
-
-        const prevTime = audio.currentTime;
-
-        await new Promise(r => setTimeout(r, 300));
-
-        // si el tiempo avanza pero sospechamos audio muerto
-        if (audio.currentTime > prevTime) {
-
-            // FORZAR RESET REAL
-            const currentSrc = audio.src;
-
-            audio.pause();
-            audio.src = "";
-            audio.load();
-
-            audio.src = currentSrc;
-
-            await safePlayAudio();
-
-            syncPlayPauseButtons();
-
-            return true;
-
-        }
-
-    } catch {}
-
-}
 
     recoveringAudio = true;
 
     try {
-
         let ok = await forceResumePlayback();
 
         if (token !== currentTrackToken) return false;
 
         if (ok && !audio.paused) {
             syncPlayPauseButtons();
+            syncMediaSessionState();
             return true;
         }
 
         if (currentIndex >= 0 && queue[currentIndex]) {
-
             const track = queue[currentIndex];
-            const src = fixDropbox(track.url);
 
-            audio.src = src;
-
-            ok = await safePlayAudio();
-
-            if (token !== currentTrackToken) return false;
-
-            if (ok) {
-                syncPlayPauseButtons();
-                return true;
-            }
-        }
-
-        if (audioPreload.src) {
-
-            audio.src = audioPreload.src;
-
-            ok = await safePlayAudio();
-
-            if (token !== currentTrackToken) return false;
-
-            if (ok) {
-                syncPlayPauseButtons();
-                return true;
-            }
-        }
-
-        // FIX extra iOS suspendido
-if (audio.src) {
-
-    try {
-
-        audio.load();
-
-        ok = await safePlayAudio();
-
-        if (ok) {
-            syncPlayPauseButtons();
-            return true;
-        }
-
-    } catch {}
-
+            if (audio.readyState === 0) {
+    audio.load();
 }
 
+            ok = await safePlayAudio();
+
+            if (token !== currentTrackToken) return false;
+
+            if (ok && !audio.paused) {
+                syncPlayPauseButtons();
+                syncMediaSessionState();
+                return true;
+            }
+        }
+
         syncPlayPauseButtons();
+        syncMediaSessionState();
         return false;
 
     } finally {
@@ -2105,72 +2110,67 @@ if (audio.src) {
 // =====================================================
 
 async function playFromQueue(index) {
-
- 
     if (index < 0 || index >= queue.length) return;
+    if (switchingTrack) return;
+
+    switchingTrack = true;
+    isInternalSwitch = true;
 
     const token = ++currentTrackToken;
-
-
     currentIndex = index;
 
     const track = queue[currentIndex];
-    if (!track || !track.url) return;
-    
-   await fadeOutAudio();
-   setAudioSource(track);
-   if (token !== currentTrackToken) return;
-
-   audio.load(); 
-
-if (token !== currentTrackToken) return;
-
-updateNowPlayingUI(track);
-vibrateShort();
-setupMediaSession(track);
-
-    if (isShuffle) {
-        advanceShufflePosToIndex(index);
+    if (!track || !track.url) {
+        switchingTrack = false;
+        isInternalSwitch = false;
+        return;
     }
 
+    try {
+        await fadeOutAudio();
+
+        vibrateShort();
+        updateNowPlayingUI(track);
+        syncPlayPauseButtons();
+        setupMediaSession(track);
+
+        const okSrc = setAudioSource(track);
+        if (!okSrc || token !== currentTrackToken) return;
+
+        //  Validación extra importante
+        if (!audio.src) return;
+
+        if (audio.readyState === 0) {
+    audio.load();
+}
+        if (token !== currentTrackToken) return;
+
+        if (isShuffle) {
+            advanceShufflePosToIndex(index);
+        }
+
+       const played = await safePlayAudio();
+if (token !== currentTrackToken) return;
+
+if (played) {
+    await fadeInAudio();
     preloadUpcomingTrack();
-
-    let played = await forceResumePlayback();
-    if (token !== currentTrackToken) return;
-    if (played) {
-    fadeInAudio();
 }
 
-    if (token !== currentTrackToken) return;
+        if (token !== currentTrackToken) return;
 
-    // Solo fallback si de verdad quedó pausado
-if (!played && audio.paused && audioPreload.src && token === currentTrackToken) {
-    try {
-        audio.src = audioPreload.src;
-        const preloadPlayed = await safePlayAudio();
-        if (preloadPlayed) played = true;
-    } catch {}
-}
+        syncPlayPauseButtons();
+        syncMediaSessionState();
+        savePlayerState();
 
-if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex] && token === currentTrackToken) {
-    try {
-        audio.src = fixDropbox(queue[currentIndex].url);
-        const retryPlayed = await safePlayAudio();
-        if (retryPlayed) played = true;
-    } catch {}
-}
+        //  IMPORTANTE: NO render aquí
 
-   syncPlayPauseButtons();
-syncMediaSessionState();
-if (token !== currentTrackToken) return;
-
-if ("mediaSession" in navigator) {
-   navigator.mediaSession.playbackState = "playing";
-}
-
-savePlayerState();
-if (token !== currentTrackToken) return;
-render();
+    } finally {
+        if (token === currentTrackToken) {
+            isInternalSwitch = false;
+        }
+        switchingTrack = false;
+    }
 }
 
 // =====================================================
@@ -2206,58 +2206,25 @@ if (currentIndex < 0) {
 
 
 async function resume() {
-
     userPaused = false;
 
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
         setAudioSource(queue[currentIndex]);
+        audio.load();
     }
 
-    let ok = await forceResumePlayback();
+    let ok = await safePlayAudio();
 
     if (!ok && currentIndex >= 0 && queue[currentIndex]) {
-
-        const track = queue[currentIndex];
-
-        audio.src = fixDropbox(track.url);
-
-        ok = await safePlayAudio();
-    }
-
-    // FIX iOS suspendido
-    if (!ok && audio.src) {
-
-        try {
-            audio.load();
-            ok = await safePlayAudio();
-        } catch {}
-
-    }
-
-//
-if (!ok && currentIndex >= 0 && queue[currentIndex]) {
-
-    try {
-
-        const track = queue[currentIndex];
-
-        audio.src = fixDropbox(track.url);
-
+        setAudioSource(queue[currentIndex]);
         audio.load();
-
         ok = await safePlayAudio();
-
-    } catch {}
-
-}
-//
+    }
 
     isPlaying = ok;
-
     syncPlayPauseButtons();
     syncMediaSessionState();
     savePlayerState();
-
 }
 
 
@@ -2288,43 +2255,54 @@ playBtn.onclick = async () => {
 
 
 prevBtn.onclick = async () => {
-    vibrateShort();
-   
+    if (clickingPrev) return;
+    clickingPrev = true;
 
-    if (!queue.length) return;
-    
-    
+    try {
+        vibrateShort();
 
-    const prevIndex = getPrevIndex();
-    if (prevIndex < 0) return;
+        if (!queue.length) return;
 
-    if (isShuffle) {
-        const pos = shuffleOrder.indexOf(prevIndex);
-        if (pos >= 0) shufflePos = pos;
+        const prevIndex = getPrevIndex();
+        if (prevIndex < 0) return;
+
+        if (isShuffle) {
+            const pos = shuffleOrder.indexOf(prevIndex);
+            if (pos >= 0) shufflePos = pos;
+        }
+
+        await playFromQueue(prevIndex);
+    } finally {
+        setTimeout(() => clickingPrev = false, 180);
     }
-     
-    
-    await playFromQueue(prevIndex);
 };
 
 
 nextBtn.onclick = async () => {
-    vibrateShort();
- 
-    if (!queue.length) return;
+    if (clickingNext) return;
+    clickingNext = true;
 
-    const nextIndex = getNextIndex();
-    if (nextIndex < 0) {
-        pause();
-        return;
-    }
+    try {
+        vibrateShort();
 
-    if (isShuffle) {
-        const pos = shuffleOrder.indexOf(nextIndex);
-        if (pos >= 0) shufflePos = pos;
+        if (!queue.length) return;
+
+        const nextIndex = getNextIndex();
+        if (nextIndex < 0) {
+            pause();
+            return;
+        }
+
+        if (isShuffle) {
+            const pos = shuffleOrder.indexOf(nextIndex);
+            if (pos >= 0) shufflePos = pos;
+        }
+
+        await playFromQueue(nextIndex);
+
+    } finally {
+        setTimeout(() => clickingNext = false, 180);
     }
-    
-    await playFromQueue(nextIndex);
 };
 
 
@@ -2478,7 +2456,12 @@ audio.addEventListener("timeupdate", () => {
     }
 
     updatePositionState();
-    savePlayerState();
+
+    const now = Date.now();
+    if (now - lastStateSave > 3000) {
+        lastStateSave = now;
+        savePlayerState();
+    }
 });
 
 
@@ -2497,25 +2480,22 @@ audio.addEventListener("play", () => {
 
 
 audio.addEventListener("pause", () => {
-
     isPlaying = false;
     syncPlayPauseButtons();
 
-    // FIX iOS background
-    if (!userPaused) {
+    if (userPaused) return;
+    if (isInternalSwitch) return;
+    if (switchingTrack) return;
 
-        setTimeout(async () => {
+    setTimeout(async () => {
+        if (userPaused) return;
+        if (isInternalSwitch) return;
+        if (switchingTrack) return;
 
-            if (!userPaused && audio.paused) {
-
-                await recoverPlaybackIfNeeded();
-
-            }
-
-        }, 1000);
-
-    }
-
+        if (audio.paused) {
+            await recoverPlaybackIfNeeded();
+        }
+    }, 1000);
 });
 
 
@@ -2707,26 +2687,21 @@ window.addEventListener("focus", async () => {
 // =====================================================
 
 setInterval(async () => {
-
     if (userPaused) return;
-
     if (!audio.src) return;
-
+    if (isInternalSwitch) return;
+    if (switchingTrack) return;
+    if (recoveringAudio) return;
     if (document.hidden && !wasPlayingBeforeHide) return;
 
     const now = Date.now();
-
-    if (now - lastAudioCheck < 2000) return;
-
+    if (now - lastAudioCheck < 4000) return;
     lastAudioCheck = now;
 
-    if (audio.paused && !audio.ended && !userPaused) {
-
+    if (audio.paused && !audio.ended) {
         await recoverPlaybackIfNeeded();
-
     }
-
-}, 2000);
+}, 4000);
 
 
 // =====================================================

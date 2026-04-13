@@ -1785,16 +1785,8 @@ function preloadUpcomingTrack() {
     const preloadQueueId = currentQueueId;
 
     audioPreload.src = fixDropbox(track.url);
-
-    //  clave: forzar carga inmediata
     audioPreload.preload = "auto";
     audioPreload.load();
-
-    //  nueva mejora
-    audioPreload.play().then(() => {
-        audioPreload.pause();
-        audioPreload.currentTime = 0;
-    }).catch(() => {});
 
     audioPreload.oncanplaythrough = () => {
         if (preloadQueueId !== currentQueueId) {
@@ -2174,56 +2166,8 @@ if (played) {
 }
 
 async function startCrossfade() {
-
-    if (isCrossfading) return;
-    if (!audioPreload.src) return;
-
-    isCrossfading = true;
-
-    try {
-
-        //  usar preload real
-        audioPreload.volume = 0;
-
-        await audioPreload.play();
-
-        const steps = 20;
-        const stepTime = (CROSSFADE_TIME * 1000) / steps;
-
-        const targetVol = Number(vol.value) || 1;
-
-        for (let i = 0; i <= steps; i++) {
-
-            const progress = i / steps;
-
-            audio.volume = (1 - progress) * targetVol;
-            audioPreload.volume = progress * targetVol;
-
-            await new Promise(r => setTimeout(r, stepTime));
-        }
-
-        //  swap limpio SIN corte
-        audio.pause();
-
-        audio.src = audioPreload.src;
-        audio.currentTime = audioPreload.currentTime;
-        audio.volume = targetVol;
-
-        await audio.play();
-
-        // limpiar preload
-        audioPreload.pause();
-        audioPreload.src = "";
-
-        isCrossfading = false;
-
-    } catch (e) {
-        console.log("Crossfade error", e);
-        isCrossfading = false;
-    }
+    return;
 }
-
-
 
 // =====================================================
 // PAUSE / RESUME
@@ -2514,15 +2458,6 @@ audio.addEventListener("timeupdate", () => {
         lastStateSave = now;
         savePlayerState();
     }
-
-    //  activar crossfade antes de terminar
-if (
-    !isCrossfading &&
-    Number.isFinite(audio.duration) &&
-    audio.duration - audio.currentTime <= CROSSFADE_TIME
-) {
-    startCrossfade();
-}
 });
 
 

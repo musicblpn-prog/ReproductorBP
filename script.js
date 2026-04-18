@@ -32,6 +32,9 @@ const npTitle = document.getElementById("npTitle");
 const npSub = document.getElementById("npSub");
 const coverEl = document.getElementById("cover");
 
+const npContext = document.getElementById("npContext");
+const bigContext = document.getElementById("bigContext");
+
 const listEl = document.getElementById("list");
 const emptyEl = document.getElementById("empty");
 const crumbsEl = document.getElementById("crumbs");
@@ -617,6 +620,26 @@ function favoriteTracks() {
 
 }
 
+function getQueueContextLabel() {
+
+    if (!queue.length || !queueContext || !queueContext.type) {
+        return "Sin cola activa";
+    }
+
+    if (queueContext.type === "album") {
+        return `Reproduciendo desde ${queueContext.album || "álbum"}`;
+    }
+
+    if (queueContext.type === "favorites") {
+        return "Reproduciendo desde Favoritos";
+    }
+
+    if (queueContext.type === "collection") {
+        return `Reproduciendo desde ${queueContext.name || "colección"}`;
+    }
+
+    return "Reproduciendo desde Todas las canciones";
+}
 
 // =====================================================
 // BUILD QUEUE
@@ -1409,7 +1432,10 @@ function updateNowPlayingUI(track) {
 
     npSub.textContent =
         `${track.artist || ""} · ${track.genre || ""} · ${track.album || ""}`;
-
+ 
+        if (npContext) {
+    npContext.textContent = getQueueContextLabel();
+}
 
     if (track.cover) {
 
@@ -1436,6 +1462,9 @@ function updateNowPlayingUI(track) {
     bigArtist.textContent =
         `${track.artist || "—"} · ${track.genre || "—"} · ${track.album || "—"}`;
 
+        if (bigContext) {
+    bigContext.textContent = getQueueContextLabel();
+}
 
     if (track.cover) {
 

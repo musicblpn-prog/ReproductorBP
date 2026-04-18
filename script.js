@@ -940,7 +940,7 @@ listEl.appendChild(div);
                 .localeCompare(b.artist + b.album + b.title)
         );
 
-        queue = tracks;
+        
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -1083,7 +1083,7 @@ listEl.appendChild(div);
                 .localeCompare(b.artist + b.album + b.title)
         );
 
-        queue = tracks;
+        
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -2212,7 +2212,7 @@ playBtn.onclick = async () => {
 
 prevBtn.onclick = async () => {
     vibrateShort();
-    queue = buildQueueForCurrentView();
+    
     if (!queue.length) return;
     
     
@@ -2232,7 +2232,7 @@ prevBtn.onclick = async () => {
 
 nextBtn.onclick = async () => {
     vibrateShort();
-    queue = buildQueueForCurrentView();
+    
     if (!queue.length) return;
 
     const nextIndex = getNextIndex();
@@ -2443,7 +2443,7 @@ audio.addEventListener("pause", () => {
 
 audio.addEventListener("ended", async () => {
 
-    queue = buildQueueForCurrentView();
+    
 
     if (!queue.length) return;
 

@@ -32,8 +32,6 @@ const npTitle = document.getElementById("npTitle");
 const npSub = document.getElementById("npSub");
 const coverEl = document.getElementById("cover");
 
-const npContext = document.getElementById("npContext");
-
 const listEl = document.getElementById("list");
 const emptyEl = document.getElementById("empty");
 const crumbsEl = document.getElementById("crumbs");
@@ -79,8 +77,6 @@ const inGenre = document.getElementById("inGenre");
 const inAlbum = document.getElementById("inAlbum");
 const inUrl = document.getElementById("inUrl");
 const inCover = document.getElementById("inCover");
-const OFFLINE_LIMIT_MB = 80;
-
 
 
 // FULL PLAYER
@@ -103,7 +99,6 @@ const npBg = document.getElementById("npBg");
 const bigTitle = document.getElementById("bigTitle");
 const bigArtist = document.getElementById("bigArtist");
 const bigCover = document.getElementById("bigCover");
-const bigContext = document.getElementById("bigContext");
 
 const seekFull = document.getElementById("seekFull");
 
@@ -140,7 +135,6 @@ library.collections ??= {};
 
 library.collections["Music Day"] ??= [];
 library.collections["Favoritos"] ??= [];
-library.collections["Offline"] ??= [];
 
 let favorites = loadFavorites();
 
@@ -176,9 +170,8 @@ let isUserSeeking = false;
 audio.volume = Number(vol.value);
 
 render();
-updateOfflineStorageUI();
 restorePlayerState();
-initDB();
+
 
 // =====================================================
 // STORAGE
@@ -367,7 +360,7 @@ function loadFavorites() {
 function saveMusicDay() {
   localStorage.setItem(
     LS_DAY,
-    JSON.stringify(library.collections["Music Day"] ?? [])
+    JSON.stringify([...musicDay])
   );
 }
 
@@ -426,22 +419,21 @@ async function restorePlayerState() {
 
     if (!saved.trackId) return;
 
-    queue = allTracks();
-queueContext = { type: "all" };
-
-const foundIndex = queue.findIndex(t => t.id === saved.trackId);
+    const tracks = allTracks();
+    queue = tracks;
+    const foundIndex = tracks.findIndex(t => t.id === saved.trackId);
 
     if (foundIndex < 0) return;
 
-    
+    queue = tracks;
     currentIndex = foundIndex;
 
     const track = queue[currentIndex];
     if (!track) return;
 
-    await setAudioSource(track);
-updateNowPlayingUI(track);
-setupMediaSession(track);
+    setAudioSource(track);
+    updateNowPlayingUI(track);
+    setupMediaSession(track);
 
     const applySavedTime = () => {
         if (
@@ -470,21 +462,6 @@ setupMediaSession(track);
 // =====================================================
 // HELPERS
 // =====================================================
-
-//offline
-
-async function updateOfflineStorageUI() {
-
-    const el = document.getElementById("offlineInfo");
-    if (!el) return;
-
-    const bytes = await getOfflineSize();
-
-    const mb = (bytes / (1024 * 1024)).toFixed(2);
-
-    el.textContent = `Offline: ${mb} MB / ${OFFLINE_LIMIT_MB} MB`;
-}
-
 
 //
 function vibrateShort() {
@@ -540,25 +517,15 @@ function cryptoId() {
 // DROPBOX FIX
 // =====================================================
 
-function fixDropbox(url = "") {
+function fixDropbox(url) {
 
     if (!url.includes("dropbox.com")) return url;
 
-    //  caso 1: ya es dominio directo (NO tocar)
-    if (url.includes("dl.dropboxusercontent.com")) {
-        return url;
-    }
+    return url
+        .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+        .replace("&raw=1", "")
+        .replace(/&st=[^&]+/, "");
 
-    //  caso 2: convertir dl=0 o raw=1 → dl=1
-    if (url.includes("?")) {
-        url = url
-            .replace("dl=0", "dl=1")
-            .replace("raw=1", "dl=1");
-    } else {
-        url += "?dl=1";
-    }
-
-    return url;
 }
 
 
@@ -651,32 +618,6 @@ function favoriteTracks() {
 }
 
 
-function getQueueContextLabel() {
-
-    if (!queueContext || !queueContext.type) {
-        return "Sin cola activa";
-    }
-
-    if (queueContext.type === "favorites") {
-        return "Reproduciendo desde Favoritos";
-    }
-
-    if (queueContext.type === "collection") {
-        return `Reproduciendo desde ${queueContext.name || "Colección"}`;
-    }
-
-    if (queueContext.type === "album") {
-        return `Reproduciendo desde ${queueContext.album || "Álbum"}`;
-    }
-
-    if (queueContext.type === "all") {
-        return "Reproduciendo desde Todas las canciones";
-    }
-
-    return "Sin cola activa";
-}
-
-
 // =====================================================
 // BUILD QUEUE
 // =====================================================
@@ -692,7 +633,10 @@ function buildQueueForCurrentView() {
 
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-        
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
 
         return tracks;
     }
@@ -702,13 +646,14 @@ function buildQueueForCurrentView() {
         queueContext = { type: "collection", name: selectedAlbum };
 
         const trackIds = library.collections[selectedAlbum] || [];
+        let tracks = allTracks().filter(t => trackIds.includes(t.id));
 
-let tracks = trackIds
-    .map(id => allTracks().find(t => t.id === id))
-    .filter(Boolean);
         if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-       
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
 
         return tracks;
     }
@@ -720,7 +665,11 @@ let tracks = trackIds
         let tracks = (library.genres[selectedGenre]?.albums?.[selectedAlbum]?.tracks ?? [])
             .map(t => ({ ...t, genre: selectedGenre, album: selectedAlbum }));
 
-    
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
+
         return tracks;
     }
 
@@ -731,7 +680,11 @@ let tracks = trackIds
 
     if (q) tracks = tracks.filter(t => matchTrack(t, q));
 
-   
+    tracks.sort((a, b) =>
+        (a.artist + a.album + a.title)
+            .localeCompare(b.artist + b.album + b.title)
+    );
+
     return tracks;
 }
 
@@ -905,7 +858,6 @@ function render() {
 
     const hasAny = allTracks().length > 0;
     emptyEl.classList.toggle("hidden", hasAny);
-    updateOfflineStorageUI();
 
     if (!hasAny) return;
 
@@ -983,15 +935,12 @@ listEl.appendChild(div);
             tracks = tracks.filter(t => matchTrack(t, q));
         }
 
-      // SOLO ordenar si es búsqueda
-if (q) {
-    tracks.sort((a, b) =>
-        (a.artist + a.album + a.title)
-            .localeCompare(b.artist + b.album + b.title)
-    );
-}
+        tracks.sort((a, b) =>
+            (a.artist + a.album + a.title)
+                .localeCompare(b.artist + b.album + b.title)
+        );
 
-        
+        queue = tracks;
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -1134,7 +1083,7 @@ if (q) {
                 .localeCompare(b.artist + b.album + b.title)
         );
 
-        
+        queue = tracks;
 
         tracks.forEach((track, idx) => {
             listEl.appendChild(songRow(track, idx));
@@ -1142,8 +1091,6 @@ if (q) {
 
         return;
     }
-
-    
 }
 
 
@@ -1228,10 +1175,6 @@ function songRow(track, idx) {
 
     const activeText = isCurrentTrack ? " · Reproduciendo" : "";
 
-    const isOffline =
-    (library.collections["Offline"] ?? []).includes(track.id);
-
-
     div.innerHTML = `
         <div class="song-left">
             <div class="song-cover">${track.cover ? "" : "♪"}</div>
@@ -1251,9 +1194,6 @@ function songRow(track, idx) {
                     <span class="day-btn">
         ${(library.collections["Music Day"] ?? []).includes(track.id) ? "🌞" : "☀️"}
     </span>
-    <span class="offline-btn">
-    ${isOffline ? "📦" : "⬇️"}
-</span>
                     <span class="delete-btn">🗑</span>
                 </div>
             </div>
@@ -1270,85 +1210,6 @@ function songRow(track, idx) {
     }
 
     const favBtn = div.querySelector(".fav-btn");
-
-//offline
-
-const offlineBtn = div.querySelector(".offline-btn");
-
-const isOfflineInLibrary =
-    (library.collections["Offline"] ?? []).includes(track.id);
-
-offlineBtn.textContent = isOfflineInLibrary ? "📦" : "⬇️";
-
-isTrackOffline(track.id).then(isOffline => {
-
-    offlineBtn.textContent = isOffline ? "📦" : "⬇️";
-
-});
-
-offlineBtn.onclick = async (e) => {
-
-    e.stopPropagation();
-
-    const isOffline = await isTrackOffline(track.id);
-
-    if (isOffline) {
-
-        //  ELIMINAR
-        await deleteOfflineTrack(track.id);
-
-        library.collections["Offline"] =
-            (library.collections["Offline"] ?? []).filter(id => id !== track.id);
-
-        saveLibrary();
-
-        await updateOfflineStorageUI();
-
-        offlineBtn.textContent = "⬇️";
-
-        render();
-
-    } else {
-
-        //  DESCARGAR
-        await downloadTrack(track);
-
-        //  ESPERAR CONFIRMACIÓN REAL EN IndexedDB
-        let confirm = false;
-
-        for (let i = 0; i < 5; i++) {
-
-            const exists = await isTrackOffline(track.id);
-
-            if (exists) {
-                confirm = true;
-                break;
-            }
-
-            await new Promise(r => setTimeout(r, 100));
-        }
-
-        //  SOLO SI SE GUARDÓ BIEN
-        if (confirm) {
-
-            library.collections["Offline"] ??= [];
-
-            if (!library.collections["Offline"].includes(track.id)) {
-                library.collections["Offline"].push(track.id);
-            }
-
-            saveLibrary();
-
-            await updateOfflineStorageUI();
-
-            offlineBtn.textContent = "📦";
-
-            render();
-        }
-    }
-};
-
-
 
 //Music Day
 
@@ -1393,16 +1254,13 @@ dayBtn.onclick = (e) => {
     div.querySelector(".play-btn").onclick = (e) => {
         e.stopPropagation();
 
-        const newQueue = buildQueueForCurrentView();
+        queue = buildQueueForCurrentView();
 
-const realIndex = newQueue.findIndex(t => t.id === track.id);
+        const realIndex = queue.findIndex(t => t.id === track.id);
 
-if (realIndex >= 0) {
-    queue = newQueue; // 👈 solo aquí se cambia la cola
-    playFromQueue(realIndex);
-}
-
-     
+        if (realIndex >= 0) {
+            playFromQueue(realIndex);
+        }
     };
 
     return div;
@@ -1553,13 +1411,6 @@ function updateNowPlayingUI(track) {
         `${track.artist || ""} · ${track.genre || ""} · ${track.album || ""}`;
 
 
-
-
-        if (npContext) {
-    npContext.textContent = getQueueContextLabel();
-}
-
-
     if (track.cover) {
 
         coverEl.style.backgroundImage = `url("${track.cover}")`;
@@ -1584,10 +1435,6 @@ function updateNowPlayingUI(track) {
 
     bigArtist.textContent =
         `${track.artist || "—"} · ${track.genre || "—"} · ${track.album || "—"}`;
-
-        if (bigContext) {
-    bigContext.textContent = getQueueContextLabel();
-}
 
 
     if (track.cover) {
@@ -1661,18 +1508,6 @@ setTimeout(() => {
         npBg.style.backgroundImage = `url("${track.cover}")`;
 
     }
-
-    const isOffline =
-    (library.collections["Offline"] ?? []).includes(track.id);
-
-const contextText = isOffline
-    ? "Reproduciendo desde Offline"
-    : (queueContext.type === "album"
-        ? `Reproduciendo desde ${track.album}`
-        : "Reproduciendo");
-
-if (npContext) npContext.textContent = contextText;
-if (bigContext) bigContext.textContent = contextText;
 
 }
 
@@ -1926,11 +1761,11 @@ function setupMediaSession(track) {
 
             const track = queue[currentIndex];
 
-await setAudioSource(track);
+            audio.src = fixDropbox(track.url);
 
-audio.load();
+            audio.load();
 
-await safePlayAudio();
+            await safePlayAudio();
 
         } catch {}
 
@@ -1994,22 +1829,14 @@ function updatePositionState() {
 // CARGAR TRACK EN AUDIO
 // =====================================================
 
-async function setAudioSource(track) {
+function setAudioSource(track) {
 
-    // primero intentar offline
-    const offline = await getOfflineTrack(track.id);
-
-    if (offline && offline.blob) {
-
-        const url = URL.createObjectURL(offline.blob);
-        audio.src = url;
-
-        return true;
-    }
-
-    //  fallback online
     const src = fixDropbox(track.url || "");
     if (!src) return false;
+
+    if (audio.src === src) {
+        return true;
+    }
 
     audio.src = src;
 
@@ -2022,8 +1849,6 @@ async function setAudioSource(track) {
 // =====================================================
 
 async function safePlayAudio() {
-
-    if(!audio.src) return false;
 
     const token = currentTrackToken;
 
@@ -2105,8 +1930,8 @@ async function fadeInAudio() {
 async function forceResumePlayback() {
 
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
-    await setAudioSource(queue[currentIndex]);
-}
+        setAudioSource(queue[currentIndex]);
+    }
 
     if (!audio.src) return false;
 
@@ -2133,38 +1958,6 @@ async function recoverPlaybackIfNeeded() {
     if (!audio.src) return false;
     if (userPaused) return false;
     if (!audio.paused) return true;
-    // 🧠 DETECTAR AUDIO MUDO (iOS BUG)
-if (!audio.paused && audio.currentTime > 0) {
-
-    try {
-
-        const prevTime = audio.currentTime;
-
-        await new Promise(r => setTimeout(r, 300));
-
-        // si el tiempo avanza pero sospechamos audio muerto
-        if (audio.currentTime > prevTime) {
-
-            // FORZAR RESET REAL
-            const currentSrc = audio.src;
-
-            audio.pause();
-            audio.src = "";
-            audio.load();
-
-            audio.src = currentSrc;
-
-            await safePlayAudio();
-
-            syncPlayPauseButtons();
-
-            return true;
-
-        }
-
-    } catch {}
-
-}
 
     recoveringAudio = true;
 
@@ -2181,14 +1974,12 @@ if (!audio.paused && audio.currentTime > 0) {
 
         if (currentIndex >= 0 && queue[currentIndex]) {
 
-           const track = queue[currentIndex];
-const recoveryTrackId = track?.id;
+            const track = queue[currentIndex];
+            const src = fixDropbox(track.url);
 
-await setAudioSource(track);
+            audio.src = src;
 
-if (queue[currentIndex]?.id !== recoveryTrackId) return false;
-
-ok = await safePlayAudio();
+            ok = await safePlayAudio();
 
             if (token !== currentTrackToken) return false;
 
@@ -2246,25 +2037,21 @@ if (audio.src) {
 
 async function playFromQueue(index) {
 
- 
-    
+    if (!queue.length) {
+    queue = buildQueueForCurrentView();
+}
+
     if (index < 0 || index >= queue.length) return;
 
     const token = ++currentTrackToken;
 
-
     currentIndex = index;
 
-    const track = queue[index];
-
-if(!track) return;
-
-// validar que sigue siendo el mismo track
-const currentId = track.id;
+    const track = queue[currentIndex];
+    if (!track || !track.url) return;
     
    await fadeOutAudio();
-   await setAudioSource(track);
-   if (token !== currentTrackToken) return;
+   setAudioSource(track);
 
    audio.load(); 
 
@@ -2281,7 +2068,6 @@ setupMediaSession(track);
     preloadUpcomingTrack();
 
     let played = await forceResumePlayback();
-    if (token !== currentTrackToken) return;
     if (played) {
     fadeInAudio();
 }
@@ -2299,8 +2085,8 @@ if (!played && audio.paused && audioPreload.src && token === currentTrackToken) 
 
 if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex] && token === currentTrackToken) {
     try {
-        await setAudioSource(queue[currentIndex]);
-const retryPlayed = await safePlayAudio();
+        audio.src = fixDropbox(queue[currentIndex].url);
+        const retryPlayed = await safePlayAudio();
         if (retryPlayed) played = true;
     } catch {}
 }
@@ -2314,12 +2100,7 @@ if ("mediaSession" in navigator) {
 }
 
 savePlayerState();
-if (token !== currentTrackToken) return;
-
-
-if(view === "songs" || view === "collectionSongs"){
-    render();
-}
+render();
 }
 
 // =====================================================
@@ -2344,13 +2125,6 @@ function pause(userInitiated = false) {
         wasPlayingBeforeHide = false;
         userPaused = true;
     }
-
-
-if (currentIndex < 0) {
-    if (npContext) npContext.textContent = "Sin cola activa";
-    if (bigContext) bigContext.textContent = "Sin cola activa";
-}
-
 }
 
 
@@ -2358,9 +2132,9 @@ async function resume() {
 
     userPaused = false;
 
-   if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
-    await setAudioSource(queue[currentIndex]);
-}
+    if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
+        setAudioSource(queue[currentIndex]);
+    }
 
     let ok = await forceResumePlayback();
 
@@ -2438,8 +2212,7 @@ playBtn.onclick = async () => {
 
 prevBtn.onclick = async () => {
     vibrateShort();
-   
-
+    queue = buildQueueForCurrentView();
     if (!queue.length) return;
     
     
@@ -2459,7 +2232,7 @@ prevBtn.onclick = async () => {
 
 nextBtn.onclick = async () => {
     vibrateShort();
- 
+    queue = buildQueueForCurrentView();
     if (!queue.length) return;
 
     const nextIndex = getNextIndex();
@@ -2670,6 +2443,8 @@ audio.addEventListener("pause", () => {
 
 audio.addEventListener("ended", async () => {
 
+    queue = buildQueueForCurrentView();
+
     if (!queue.length) return;
 
 
@@ -2830,21 +2605,9 @@ window.addEventListener("blur", () => {
 
 
 // cuando cambia conexión (muy importante en iPhone)
-window.addEventListener("offline", async () => {
+window.addEventListener("offline", () => {
 
     wasPlayingBeforeHide = !audio.paused;
-
-    if (currentIndex >= 0 && queue[currentIndex]) {
-
-        const track = queue[currentIndex];
-
-        const offline = await getOfflineTrack(track.id);
-
-        if (offline) {
-            audio.src = URL.createObjectURL(offline.blob);
-            await audio.play();
-        }
-    }
 
 });
 
@@ -3242,169 +3005,7 @@ saveSong.onclick = () => {
 
     closeModalFn();
     render();
-    
 };
-
-
-
-//==============================
-// MODO OFFLINE
-//==============================
-
-// =====================================================
-// OFFLINE DB (IndexedDB)
-// =====================================================
-
-const DB_NAME = "mi_music_offline_db";
-const DB_VERSION = 1;
-const STORE_NAME = "tracks";
-
-let db = null;
-
-function initDB() {
-  return new Promise((resolve, reject) => {
-
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
-      }
-    };
-
-    request.onsuccess = () => {
-      db = request.result;
-      resolve(db);
-    };
-
-    request.onerror = () => reject(request.error);
-
-  });
-}
-
-async function saveOfflineTrack(track, blob) {
-
-  if (!db) await initDB();
-
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  const store = tx.objectStore(STORE_NAME);
-
-  store.put({
-    id: track.id,
-    blob: blob,
-    size: blob.size
-  });
-
-  return tx.complete;
-}
-
-async function getOfflineTrack(id) {
-
-  if (!db) await initDB();
-
-  return new Promise((resolve) => {
-
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-
-    const req = store.get(id);
-
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null);
-
-  });
-}
-
-
-async function deleteOfflineTrack(id) {
-
-  if (!db) await initDB();
-
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  const store = tx.objectStore(STORE_NAME);
-
-  store.delete(id);
-updateOfflineStorageUI();
-}
-
-async function getOfflineSize() {
-
-  if (!db) await initDB();
-
-  return new Promise((resolve) => {
-
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-
-    const req = store.getAll();
-
-    req.onsuccess = () => {
-
-      const total = req.result.reduce(
-    (acc, t) => acc + (t.size || 0),
-    0
-);
-      resolve(total);
-
-    };
-
-  });
-}
-
-
-async function downloadTrack(track) {
-
-    try {
-
-        const currentSrc = audio.src;
-
-        if (!currentSrc) {
-            alert("Primero reproduce la canción");
-            return false;
-        }
-
-        const res = await fetch(currentSrc);
-        const blob = await res.blob();
-
-        await saveOfflineTrack(track, blob);
-
-        return true;
-
-    } catch (err) {
-
-        console.error(err);
-        alert("No se pudo guardar");
-
-        return false;
-    }
-} 
-
-async function isTrackOffline(id) {
-
-  const data = await getOfflineTrack(id);
-
-  return !!data;
-
-}
-
-
-async function getPlayableUrl(track){
-
-    if(!track?.id) return track.url;
-
-    const offline = await getOfflineTrack(track.id);
-
-    //  PRIORIDAD TOTAL OFFLINE
-    if(offline?.blob){
-        return URL.createObjectURL(offline.blob);
-    }
-
-    //  fallback solo si no existe offline
-    return fixDropbox(track.url);
-
-}
 
 
 

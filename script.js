@@ -1569,20 +1569,31 @@ function syncPlayPauseButtons() {
 }
 
 
-function syncMediaSessionState() {
+function syncMediaSessionState(forceState = null) {
 
     if (!("mediaSession" in navigator)) return;
 
-    const playing =
-        !!audio.src &&
-        !audio.paused &&
-        !audio.ended &&
-        audio.readyState >= 2;
-
     try {
 
+        // FORZADO MANUAL
+        if (forceState) {
+
+            navigator.mediaSession.playbackState = forceState;
+
+            return;
+
+        }
+
+        // iOS SAFARI FIX
+        const reallyPlaying =
+            !!audio.src &&
+            !audio.ended &&
+            audio.currentTime > 0 &&
+            audio.readyState >= 3 &&
+            !audio.paused;
+
         navigator.mediaSession.playbackState =
-            playing ? "playing" : "paused";
+            reallyPlaying ? "playing" : "paused";
 
     } catch {}
 
@@ -1904,7 +1915,7 @@ async function safePlayAudio() {
         if (audio.paused) return false;
 
         syncPlayPauseButtons();
-        syncMediaSessionState();
+        syncMediaSessionState("playing");
 
         if ("mediaSession" in navigator) {
             navigator.mediaSession.playbackState = "playing";
@@ -2121,7 +2132,7 @@ function pause(userInitiated = false) {
     isPlaying = false;
 
     syncPlayPauseButtons();
-    syncMediaSessionState();
+    syncMediaSessionState("paused");
     savePlayerState();
 
     if ("mediaSession" in navigator) {

@@ -1538,9 +1538,25 @@ dayBtn.onclick = (e) => {
     div.querySelector(".play-btn").onclick = (e) => {
         e.stopPropagation();
 
-        queue = buildQueueForCurrentView();
+        // usar cola personalizada SOLO si estamos en vista cola
+if (view === "queue") {
 
-        const realIndex = queue.findIndex(t => t.id === track.id);
+    queue = [...customQueue];
+
+    queueContext = {
+        type: "custom"
+    };
+
+} else {
+
+    queue = buildQueueForCurrentView();
+
+}
+
+const realIndex =
+    queue.findIndex(
+        t => t.id === track.id
+    );
 
         if (realIndex >= 0) {
             playFromQueue(realIndex);

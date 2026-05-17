@@ -1564,7 +1564,7 @@ function syncPlayPauseButtons() {
     if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
     if (playFull) playFull.textContent = playing ? "⏸" : "▶";
 
-    syncMediaSessionState(); 
+     
 
 }
 

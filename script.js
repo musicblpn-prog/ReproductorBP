@@ -2057,9 +2057,7 @@ async function playFromQueue(index) {
         advanceShufflePosToIndex(index);
     }
 
-    updateNowPlayingUI(track);
-    setupMediaSession(track);
-    vibrateShort();
+    
 
     const src = fixDropbox(track.url);
 
@@ -2075,11 +2073,23 @@ try {
     if (token !== currentTrackToken) return;
 
     const played = await safePlayAudio();
+
+    if (played) {
+
+    updateNowPlayingUI(track);
+
+    setupMediaSession(track);
+
+    if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = "playing";
+    }
+
+    }
     
     if (played && "mediaSession" in navigator) {
     navigator.mediaSession.playbackState = "playing";
     }
-    
+
         if (token !== currentTrackToken) return;
 
         if (!played) {

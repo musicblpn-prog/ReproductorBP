@@ -2081,25 +2081,14 @@ try {
     audio.src = src;
     audio.load();
 
+    updateNowPlayingUI(track);
+    vibrateShort();
+    setupMediaSession(track);
+
     if (token !== currentTrackToken) return;
 
     const played = await safePlayAudio();
 
-    if (played) {
-
-    updateNowPlayingUI(track);
-
-    setupMediaSession(track);
-
-    if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "playing";
-    }
-
-    }
-    
-    if (played && "mediaSession" in navigator) {
-    navigator.mediaSession.playbackState = "playing";
-    }
 
         if (token !== currentTrackToken) return;
 

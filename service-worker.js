@@ -1,4 +1,4 @@
-const VERSION = "v4";
+const VERSION = "v5";
 const CACHE_STATIC = `mi-music-static-${VERSION}`;
 const CACHE_RUNTIME = `mi-music-runtime-${VERSION}`;
 

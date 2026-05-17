@@ -11,6 +11,8 @@ const LS_KEY = "mi_music_library_v1";
 const LS_FAV = "mi_music_favorites_v1";
 const LS_DAY = "mi_music_day_v1";
 const LS_PLAYER = "mi_music_player_state_v1";
+const LS_CUSTOM_QUEUE =
+    "mi_music_custom_queue_v1";
 
 // =====================================================
 // DOM ELEMENTS
@@ -42,6 +44,9 @@ const crumbsEl = document.getElementById("crumbs");
 const navGenres = document.getElementById("navGenres");
 const navAlbums = document.getElementById("navAlbums");
 const navSongs = document.getElementById("navSongs");
+const navQueue = document.getElementById("navQueue");
+const clearQueueBtn =
+    document.getElementById("clearQueueBtn");
 
 const searchInput = document.getElementById("searchInput");
 
@@ -152,6 +157,9 @@ let selectedAlbum = null;
 let queue = [];
 let currentIndex = -1;
 
+let customQueue = loadCustomQueue();
+let customQueueEnabled = false;
+
 let isPlaying = false;
 
 let isShuffle = false;
@@ -164,6 +172,7 @@ let previousView = null;
 
 let queueContext = { type: "all" };
 let isUserSeeking = false;
+let draggedTrackId = null;
 
 
 // =====================================================
@@ -371,6 +380,36 @@ function saveMusicDay() {
 function saveFavorites() {
 
     localStorage.setItem(LS_FAV, JSON.stringify([...favorites]));
+
+}
+
+function saveCustomQueue() {
+
+    localStorage.setItem(
+        LS_CUSTOM_QUEUE,
+        JSON.stringify(customQueue)
+    );
+
+}
+
+function loadCustomQueue() {
+
+    try {
+
+        const raw =
+            localStorage.getItem(
+                LS_CUSTOM_QUEUE
+            );
+
+        if (!raw) return [];
+
+        return JSON.parse(raw);
+
+    } catch {
+
+        return [];
+
+    }
 
 }
 
@@ -613,12 +652,126 @@ function allTracks() {
 
 }
 
+function moveTrackInAlbum(draggedId, targetId) {
+
+    if (!selectedGenre || !selectedAlbum) return;
+
+    const albumTracks =
+        library.genres?.[selectedGenre]
+        ?.albums?.[selectedAlbum]
+        ?.tracks;
+
+    if (!albumTracks) return;
+
+    const fromIndex =
+        albumTracks.findIndex(t => t.id === draggedId);
+
+    const toIndex =
+        albumTracks.findIndex(t => t.id === targetId);
+
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const [movedTrack] =
+        albumTracks.splice(fromIndex, 1);
+
+    albumTracks.splice(toIndex + 1, 0, movedTrack);
+
+    saveLibrary();
+
+}
+
+function moveTrackInCustomQueue(
+    draggedId,
+    targetId
+) {
+
+    const fromIndex =
+        customQueue.findIndex(
+            t => t.id === draggedId
+        );
+
+    const toIndex =
+        customQueue.findIndex(
+            t => t.id === targetId
+        );
+
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const [movedTrack] =
+        customQueue.splice(fromIndex, 1);
+
+    customQueue.splice(
+        toIndex + 1,
+        0,
+        movedTrack
+    );
+    saveCustomQueue();
+
+}
+
 
 function favoriteTracks() {
 
     return allTracks().filter(t => favorites.has(t.id));
 
 }
+
+
+function addTrackToCustomQueue(track) {
+
+    if (!track?.id) return;
+
+    const alreadyExists =
+        customQueue.some(
+            t => t.id === track.id
+        );
+
+    if (alreadyExists) return;
+
+    customQueue.push(track);
+    saveCustomQueue();
+    console.log(
+        "Añadido a cola:",
+        track.title
+    );
+
+    if (!customQueueEnabled) {
+
+        activateCustomQueue();
+
+    }
+
+}
+
+
+function activateCustomQueue() {
+
+    if (!customQueue.length) return false;
+
+    queue = [...customQueue];
+
+    currentIndex = 0;
+
+    queueContext = {
+        type: "custom"
+    };
+
+    customQueueEnabled = true;
+
+    return true;
+
+}
+
+function resetCustomQueueState() {
+
+    customQueueEnabled = false;
+
+    customQueue = [];
+
+    saveCustomQueue();
+
+}
+
 
 function getQueueContextLabel() {
 
@@ -647,7 +800,12 @@ function getQueueContextLabel() {
 
 function buildQueueForCurrentView() {
     const q = normalize(searchInput.value).toLowerCase();
+    
+    if (customQueueEnabled && customQueue.length) {
 
+    return [...customQueue];
+
+    }
     // Favoritos
     if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
         queueContext = { type: "favorites" };
@@ -688,10 +846,7 @@ function buildQueueForCurrentView() {
         let tracks = (library.genres[selectedGenre]?.albums?.[selectedAlbum]?.tracks ?? [])
             .map(t => ({ ...t, genre: selectedGenre, album: selectedAlbum }));
 
-        tracks.sort((a, b) =>
-            (a.artist + a.album + a.title)
-                .localeCompare(b.artist + b.album + b.title)
-        );
+        
 
         return tracks;
     }
@@ -870,6 +1025,25 @@ function cleanCollections() {
 // =====================================================
 
 function render() {
+
+// =================================================
+// VISTA: COLA PERSONALIZADA
+// =================================================
+
+if (view === "queue") {
+
+    listEl.innerHTML = "";
+
+    customQueue.forEach((track, idx) => {
+
+        listEl.appendChild(songRow(track, idx));
+
+    });
+
+    return;
+
+}
+    
     setActiveNav();
     setCrumbs();
     cleanFavorites();
@@ -1191,6 +1365,9 @@ function songRow(track, idx) {
     const div = document.createElement("div");
     div.className = "card song-card";
 
+    div.draggable = true;
+    div.dataset.trackId = track.id;
+
     const isCurrentTrack =
         currentIndex >= 0 &&
         queue[currentIndex] &&
@@ -1217,7 +1394,13 @@ function songRow(track, idx) {
                     <span class="day-btn">
         ${(library.collections["Music Day"] ?? []).includes(track.id) ? "🌞" : "☀️"}
     </span>
-                    <span class="delete-btn">🗑</span>
+
+                    ${view === "queue"
+                    ? `<span class="remove-queue-btn">❌</span>`
+                    : `<span class="queue-btn">➕</span>`
+}
+
+<span class="delete-btn">🗑</span>
                 </div>
             </div>
         </div>
@@ -1269,6 +1452,43 @@ dayBtn.onclick = (e) => {
         toggleFavorite(track);
     };
 
+
+    div.querySelector(".queue-btn").onclick = (e) => {
+
+    e.stopPropagation();
+
+    addTrackToCustomQueue(track);
+  
+    };
+
+    const removeQueueBtn =
+    div.querySelector(".remove-queue-btn");
+
+   if (removeQueueBtn) {
+
+    removeQueueBtn.onclick = (e) => {
+
+        e.stopPropagation();
+
+        customQueue =
+            customQueue.filter(
+                t => t.id !== track.id
+            );
+            saveCustomQueue();
+
+        // si la cola queda vacía
+        if (!customQueue.length) {
+
+            customQueueEnabled = false;
+
+        }
+
+        render();
+
+    };
+
+    }
+
     div.querySelector(".delete-btn").onclick = (e) => {
         e.stopPropagation();
         deleteSong(track);
@@ -1285,9 +1505,79 @@ dayBtn.onclick = (e) => {
             playFromQueue(realIndex);
         }
     };
+    
+    // =====================================================
+// DRAG & DROP
+// =====================================================
+
+div.addEventListener("dragstart", () => {
+
+    draggedTrackId = track.id;
+
+    div.classList.add("dragging");
+
+});
+
+div.addEventListener("dragend", () => {
+
+    div.classList.remove("dragging");
+
+});
+
+div.addEventListener("dragover", (e) => {
+
+    e.preventDefault();
+
+    div.classList.add("drag-over");
+
+});
+
+div.addEventListener("dragleave", () => {
+
+    div.classList.remove("drag-over");
+
+});
+
+div.addEventListener("drop", (e) => {
+
+    e.preventDefault();
+
+    div.classList.remove("drag-over");
+
+    const draggedId = draggedTrackId;
+    const targetId = track.id;
+
+    if (!draggedId || draggedId === targetId) return;
+
+    if (view === "queue") {
+
+    moveTrackInCustomQueue(
+        draggedId,
+        targetId
+    );
+
+} else {
+
+    moveTrackInAlbum(
+        draggedId,
+        targetId
+    );
+
+}
+
+render();
+
+    });
+
 
     return div;
 }
+
+
+
+
+
+
 
 
 // =====================================================
@@ -1676,12 +1966,25 @@ function getNextIndex() {
         const nextPos = shufflePos + 1;
 
         if (nextPos >= shuffleOrder.length) {
-            if (repeatMode === "all") {
-                rebuildShuffleKeepingCurrent();
-                return shuffleOrder[0] ?? -1;
-            }
-            return -1;
-        }
+
+    if (repeatMode === "all") {
+
+        rebuildShuffleKeepingCurrent();
+
+        return shuffleOrder[0] ?? -1;
+
+    }
+
+    // cola personalizada terminada
+    if (customQueueEnabled) {
+
+        resetCustomQueueState();
+
+    }
+
+    return -1;
+
+}
 
         return shuffleOrder[nextPos];
     }
@@ -1689,8 +1992,23 @@ function getNextIndex() {
     const next = currentIndex + 1;
 
     if (next >= queue.length) {
-        return repeatMode === "all" ? 0 : -1;
+
+    if (repeatMode === "all") {
+
+        return 0;
+
     }
+
+    // cola personalizada terminada
+    if (customQueueEnabled) {
+
+        resetCustomQueueState();
+
+    }
+
+    return -1;
+
+}
 
     return next;
 }
@@ -2668,6 +2986,29 @@ navSongs.onclick = () => {
     selectedAlbum = null;
     render();
 };
+
+navQueue.onclick = () => {
+
+    view = "queue";
+
+    render();
+
+};
+
+clearQueueBtn.onclick = () => {
+
+    customQueue = [];
+    saveCustomQueue();
+    customQueueEnabled = false;
+
+    if (view === "queue") {
+
+        render();
+
+    }
+
+};
+
 
 const navCollections = document.getElementById("navCollections");
 

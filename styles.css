@@ -1426,3 +1426,17 @@ input{
     transform: translateY(20px);
 
 }
+
+
+/* =========================================
+DRAG & DROP SONGS
+========================================= */
+
+.song-card.dragging {
+    opacity: 0.5;
+    transform: scale(0.98);
+}
+
+.song-card.drag-over {
+    border: 2px dashed #ffffff55;
+}

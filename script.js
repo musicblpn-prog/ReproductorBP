@@ -2089,6 +2089,21 @@ try {
 
     const played = await safePlayAudio();
 
+    if (played && token === currentTrackToken && "mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+
+    setTimeout(() => {
+        if (token === currentTrackToken && !userPaused && "mediaSession" in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+        }
+    }, 300);
+
+    setTimeout(() => {
+        if (token === currentTrackToken && !userPaused && "mediaSession" in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+        }
+    }, 900);
+}
 
         if (token !== currentTrackToken) return;
 
@@ -2099,7 +2114,7 @@ try {
         preloadUpcomingTrack();
 
         syncPlayPauseButtons();
-        syncMediaSessionState();
+        
         savePlayerState();
         render();
 

@@ -169,7 +169,7 @@ if (
       const cached = await cache.match(request);
 
       //  si ya está cacheado → respuesta inmediata
-      if (cached) return cached;
+      // intentar red primero para evitar audios corruptos/parciales
 
       try {
 

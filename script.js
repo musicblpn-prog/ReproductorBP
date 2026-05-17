@@ -1618,6 +1618,8 @@ function syncShuffleButtons() {
 let playRequestId = 0;
 let currentTrackToken = 0;
 let recoveringAudio = false;
+let isSwitchingTrack = false;
+let preloadTrackId = null;
 let wasPlayingBeforeHide = false;
 let userPaused = false;
 let lastAudioCheck = 0;
@@ -1741,15 +1743,22 @@ function preloadSpecificIndex(index) {
     const nextTrack = queue[index];
     if (!nextTrack?.url) return;
 
-    audioPreload.src = fixDropbox(nextTrack.url);
+    const src = fixDropbox(nextTrack.url);
+
+    preloadTrackId = nextTrack.id;
+    audioPreload.src = src;
     audioPreload.load();
 }
 
-
 function preloadUpcomingTrack() {
     const nextIndex = getNextIndex();
+
     if (nextIndex >= 0) {
         preloadSpecificIndex(nextIndex);
+    } else {
+        preloadTrackId = null;
+        audioPreload.removeAttribute("src");
+        audioPreload.load();
     }
 }
 
@@ -1984,73 +1993,33 @@ async function recoverPlaybackIfNeeded() {
     const token = currentTrackToken;
 
     if (recoveringAudio) return false;
+    if (isSwitchingTrack) return false;
     if (!audio.src) return false;
     if (userPaused) return false;
     if (!audio.paused) return true;
+    if (currentIndex < 0 || !queue[currentIndex]) return false;
 
     recoveringAudio = true;
 
     try {
+        const track = queue[currentIndex];
+        const expectedSrc = fixDropbox(track.url);
 
-        let ok = await forceResumePlayback();
+        if (!audio.src.includes(expectedSrc.split("/").pop()?.split("?")[0] || "")) {
+            audio.src = expectedSrc;
+            audio.load();
+        }
+
+        let ok = await safePlayAudio();
 
         if (token !== currentTrackToken) return false;
 
         if (ok && !audio.paused) {
             syncPlayPauseButtons();
+            syncMediaSessionState();
             return true;
         }
 
-        if (currentIndex >= 0 && queue[currentIndex]) {
-
-            const track = queue[currentIndex];
-            const src = fixDropbox(track.url);
-
-            audio.src = src;
-
-            ok = await safePlayAudio();
-
-            if (token !== currentTrackToken) return false;
-
-            if (ok) {
-                syncPlayPauseButtons();
-                return true;
-            }
-        }
-
-        if (audioPreload.src) {
-
-            audio.src = audioPreload.src;
-
-            ok = await safePlayAudio();
-
-            if (token !== currentTrackToken) return false;
-
-            if (ok) {
-                syncPlayPauseButtons();
-                return true;
-            }
-        }
-
-        // FIX extra iOS suspendido
-if (audio.src) {
-
-    try {
-
-        audio.load();
-
-        ok = await safePlayAudio();
-
-        if (ok) {
-            syncPlayPauseButtons();
-            return true;
-        }
-
-    } catch {}
-
-}
-
-        syncPlayPauseButtons();
         return false;
 
     } finally {
@@ -2067,69 +2036,64 @@ if (audio.src) {
 async function playFromQueue(index) {
 
     if (!queue.length) {
-    queue = buildQueueForCurrentView();
-}
+        queue = buildQueueForCurrentView();
+    }
 
     if (index < 0 || index >= queue.length) return;
 
     const token = ++currentTrackToken;
+    isSwitchingTrack = true;
+    userPaused = false;
 
     currentIndex = index;
 
     const track = queue[currentIndex];
-    if (!track || !track.url) return;
-    
-   await fadeOutAudio();
-   setAudioSource(track);
-
-   audio.load(); 
-
-if (token !== currentTrackToken) return;
-
-updateNowPlayingUI(track);
-vibrateShort();
-setupMediaSession(track);
+    if (!track || !track.url) {
+        isSwitchingTrack = false;
+        return;
+    }
 
     if (isShuffle) {
         advanceShufflePosToIndex(index);
     }
 
-    preloadUpcomingTrack();
+    updateNowPlayingUI(track);
+    setupMediaSession(track);
+    vibrateShort();
 
-    let played = await forceResumePlayback();
-    if (played) {
-    fadeInAudio();
-}
+    const src = fixDropbox(track.url);
+
+try {
+
+    try {
+        audio.pause();
+    } catch {}
+
+    audio.src = src;
+    audio.load();
 
     if (token !== currentTrackToken) return;
 
-    // Solo fallback si de verdad quedó pausado
-if (!played && audio.paused && audioPreload.src && token === currentTrackToken) {
-    try {
-        audio.src = audioPreload.src;
-        const preloadPlayed = await safePlayAudio();
-        if (preloadPlayed) played = true;
-    } catch {}
-}
+    const played = await safePlayAudio();
 
-if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex] && token === currentTrackToken) {
-    try {
-        audio.src = fixDropbox(queue[currentIndex].url);
-        const retryPlayed = await safePlayAudio();
-        if (retryPlayed) played = true;
-    } catch {}
-}
+        if (token !== currentTrackToken) return;
 
-   syncPlayPauseButtons();
-syncMediaSessionState();
-if (token !== currentTrackToken) return;
+        if (!played) {
+            console.log("No se pudo reproducir:", track.title);
+        }
 
-if ("mediaSession" in navigator) {
-   navigator.mediaSession.playbackState = "playing";
-}
+        preloadUpcomingTrack();
 
-savePlayerState();
-render();
+        syncPlayPauseButtons();
+        syncMediaSessionState();
+        savePlayerState();
+        render();
+
+    } finally {
+        if (token === currentTrackToken) {
+            isSwitchingTrack = false;
+        }
+    }
 }
 
 // =====================================================
@@ -2448,7 +2412,9 @@ audio.addEventListener("play", () => {
 
 
 audio.addEventListener("pause", () => {
-
+    
+    if (isSwitchingTrack) return;
+     
     isPlaying = false;
     syncPlayPauseButtons();
 
@@ -2457,7 +2423,7 @@ audio.addEventListener("pause", () => {
 
         setTimeout(async () => {
 
-            if (!userPaused && audio.paused) {
+            if (!userPaused && audio.paused && !isSwitchingTrack) {
 
                 await recoverPlaybackIfNeeded();
 

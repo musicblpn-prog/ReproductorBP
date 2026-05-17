@@ -1634,6 +1634,7 @@ let preloadTrackId = null;
 let wasPlayingBeforeHide = false;
 let userPaused = false;
 let lastAudioCheck = 0;
+let lastTrackChange = 0;
 
 
 // =====================================================
@@ -2004,6 +2005,10 @@ async function recoverPlaybackIfNeeded() {
     const token = currentTrackToken;
 
     if (recoveringAudio) return false;
+    // evitar recover durante estabilización del cambio
+if (Date.now() - lastTrackChange < 4000) {
+    return false;
+}
     if (isSwitchingTrack) return false;
     if (!audio.src) return false;
     if (userPaused) return false;
@@ -2057,6 +2062,8 @@ async function playFromQueue(index) {
     userPaused = false;
 
     currentIndex = index;
+    
+    lastTrackChange = Date.now();
 
     const track = queue[currentIndex];
     if (!track || !track.url) {

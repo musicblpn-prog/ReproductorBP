@@ -2075,12 +2075,21 @@ async function playFromQueue(index) {
 try {
 
     try {
+
+    // SOLO pausar si realmente estaba reproduciendo
+    if (!audio.paused && !audio.ended) {
+
         audio.pause();
-    } catch {}
+
+    }
+
+} catch {}
 
     audio.src = src;
     audio.load();
-
+    
+    await new Promise(r => setTimeout(r, 80)); 
+    
     updateNowPlayingUI(track);
     vibrateShort();
     setupMediaSession(track);

@@ -735,6 +735,8 @@ function addTrackToCustomQueue(track) {
         track.title
     );
 
+    alert(`Añadido a cola: ${track.title}`);
+
     if (!customQueueEnabled) {
 
         activateCustomQueue();
@@ -773,6 +775,38 @@ function resetCustomQueueState() {
 }
 
 
+function switchToGlobalQueue() {
+
+    const all = allTracks();
+
+    if (!all.length) return -1;
+
+    const currentTrack =
+        queue[currentIndex];
+
+    queue = all;
+
+    queueContext = {
+        type: "all"
+    };
+
+    // intentar continuar desde canción actual
+    const sameTrackIndex =
+        queue.findIndex(
+            t => t.id === currentTrack?.id
+        );
+
+    currentIndex =
+        sameTrackIndex >= 0
+        ? sameTrackIndex
+        : 0;
+
+    return currentIndex + 1 < queue.length
+        ? currentIndex + 1
+        : -1;
+
+}
+
 function getQueueContextLabel() {
 
     if (!queue.length || !queueContext || !queueContext.type) {
@@ -803,9 +837,13 @@ function buildQueueForCurrentView() {
     
     if (customQueueEnabled && customQueue.length) {
 
+    queueContext = {
+        type: "custom"
+    };
+
     return [...customQueue];
 
-    }
+}
     // Favoritos
     if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
         queueContext = { type: "favorites" };
@@ -1031,6 +1069,9 @@ function render() {
 // =================================================
 
 if (view === "queue") {
+
+    setActiveNav();
+    setCrumbs();
 
     listEl.innerHTML = "";
 
@@ -1982,7 +2023,8 @@ function getNextIndex() {
 
     }
 
-    return -1;
+    // continuar con cola global
+    return switchToGlobalQueue();
 
 }
 
@@ -2006,7 +2048,8 @@ function getNextIndex() {
 
     }
 
-    return -1;
+    // continuar con cola global
+    return switchToGlobalQueue();
 
 }
 
@@ -3000,6 +3043,7 @@ clearQueueBtn.onclick = () => {
     customQueue = [];
     saveCustomQueue();
     customQueueEnabled = false;
+    alert("Cola limpiada");
 
     if (view === "queue") {
 

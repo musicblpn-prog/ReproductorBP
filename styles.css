@@ -197,6 +197,28 @@ body{
 
 }
 
+.nav-btn {
+
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+
+    border-radius: 12px;
+
+    padding: 10px 14px;
+
+    cursor: pointer;
+
+    transition: 0.2s ease;
+
+}
+
+.nav-btn:hover {
+
+    transform: scale(1.03);
+
+}
+
 
 /* =========================================
    CONTENT

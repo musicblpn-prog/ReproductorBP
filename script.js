@@ -729,19 +729,16 @@ function addTrackToCustomQueue(track) {
     if (alreadyExists) return;
 
     customQueue.push(track);
+
     saveCustomQueue();
-    console.log(
-        "Añadido a cola:",
-        track.title
-    );
 
     alert(`Añadido a cola: ${track.title}`);
 
-    if (!customQueueEnabled) {
+    // IMPORTANTE:
+    // NO activar automáticamente la cola
+    // SOLO almacenar canciones
 
-        activateCustomQueue();
-
-    }
+    render();
 
 }
 
@@ -835,15 +832,7 @@ function getQueueContextLabel() {
 function buildQueueForCurrentView() {
     const q = normalize(searchInput.value).toLowerCase();
     
-    if (customQueueEnabled && customQueue.length) {
-
-    queueContext = {
-        type: "custom"
-    };
-
-    return [...customQueue];
-
-}
+  
     // Favoritos
     if (view === "collectionSongs" && selectedAlbum === "Favoritos") {
         queueContext = { type: "favorites" };
@@ -1536,32 +1525,41 @@ dayBtn.onclick = (e) => {
     };
 
     div.querySelector(".play-btn").onclick = (e) => {
-        e.stopPropagation();
 
-        // usar cola personalizada SOLO si estamos en vista cola
-if (view === "queue") {
+    e.stopPropagation();
 
-    queue = [...customQueue];
+    // SOLO usar cola personalizada
+    // cuando estamos dentro de vista cola
+    if (view === "queue") {
 
-    queueContext = {
-        type: "custom"
-    };
+        customQueueEnabled = true;
 
-} else {
+        queue = [...customQueue];
 
-    queue = buildQueueForCurrentView();
+        queueContext = {
+            type: "custom"
+        };
 
-}
+    } else {
 
-const realIndex =
-    queue.findIndex(
-        t => t.id === track.id
-    );
+        customQueueEnabled = false;
 
-        if (realIndex >= 0) {
-            playFromQueue(realIndex);
-        }
-    };
+        queue = buildQueueForCurrentView();
+
+    }
+
+    const realIndex =
+        queue.findIndex(
+            t => t.id === track.id
+        );
+
+    if (realIndex >= 0) {
+
+        playFromQueue(realIndex);
+
+    }
+
+};
     
     // =====================================================
 // DRAG & DROP

@@ -1569,32 +1569,19 @@ function syncPlayPauseButtons() {
 }
 
 
-function syncMediaSessionState(forceState = null) {
+function syncMediaSessionState() {
 
     if (!("mediaSession" in navigator)) return;
 
+    const playing =
+        !!audio.src &&
+        !audio.paused &&
+        !audio.ended &&
+        audio.readyState >= 2;
+
     try {
-
-        // FORZADO MANUAL
-        if (forceState) {
-
-            navigator.mediaSession.playbackState = forceState;
-
-            return;
-
-        }
-
-        // iOS SAFARI FIX
-        const reallyPlaying =
-            !!audio.src &&
-            !audio.ended &&
-            audio.currentTime > 0 &&
-            audio.readyState >= 3 &&
-            !audio.paused;
-
         navigator.mediaSession.playbackState =
-            reallyPlaying ? "playing" : "paused";
-
+            playing ? "playing" : "paused";
     } catch {}
 
 }
@@ -2058,87 +2045,51 @@ async function playFromQueue(index) {
     if (index < 0 || index >= queue.length) return;
 
     const token = ++currentTrackToken;
-    isSwitchingTrack = true;
     userPaused = false;
 
     currentIndex = index;
-    
     lastTrackChange = Date.now();
 
     const track = queue[currentIndex];
-    if (!track || !track.url) {
-        isSwitchingTrack = false;
-        return;
-    }
+    if (!track || !track.url) return;
 
     if (isShuffle) {
         advanceShufflePosToIndex(index);
     }
 
-    
-
-    const src = fixDropbox(track.url);
-
-try {
-
-    try {
-
-    // SOLO pausar si realmente estaba reproduciendo
-    if (!audio.paused && !audio.ended) {
-
-        audio.pause();
-
-    }
-
-} catch {}
-
-    audio.src = src;
-    audio.load();
-    
-    await new Promise(r => setTimeout(r, 80)); 
-    
     updateNowPlayingUI(track);
     vibrateShort();
     setupMediaSession(track);
 
+    setAudioSource(track);
+    audio.load();
+
     if (token !== currentTrackToken) return;
 
-    const played = await safePlayAudio();
+    preloadUpcomingTrack();
 
-    if (played && token === currentTrackToken && "mediaSession" in navigator) {
-    navigator.mediaSession.playbackState = "playing";
+    let played = await forceResumePlayback();
 
-    setTimeout(() => {
-        if (token === currentTrackToken && !userPaused && "mediaSession" in navigator) {
-            navigator.mediaSession.playbackState = "playing";
-        }
-    }, 300);
+    if (token !== currentTrackToken) return;
 
-    setTimeout(() => {
-        if (token === currentTrackToken && !userPaused && "mediaSession" in navigator) {
-            navigator.mediaSession.playbackState = "playing";
-        }
-    }, 900);
-}
-
-        if (token !== currentTrackToken) return;
-
-        if (!played) {
-            console.log("No se pudo reproducir:", track.title);
-        }
-
-        preloadUpcomingTrack();
-
-        syncPlayPauseButtons();
-        
-        savePlayerState();
-        render();
-
-    } finally {
-        if (token === currentTrackToken) {
-            isSwitchingTrack = false;
-        }
+    if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex]) {
+        try {
+            audio.src = fixDropbox(queue[currentIndex].url);
+            played = await safePlayAudio();
+        } catch {}
     }
+
+    syncPlayPauseButtons();
+    syncMediaSessionState();
+
+    if (token !== currentTrackToken) return;
+
+    if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = "playing";
+    }
+
+    savePlayerState();
+    render();
 }
 
 // =====================================================

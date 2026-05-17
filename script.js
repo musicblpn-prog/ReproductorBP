@@ -2075,7 +2075,11 @@ try {
     if (token !== currentTrackToken) return;
 
     const played = await safePlayAudio();
-
+    
+    if (played && "mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+    }
+    
         if (token !== currentTrackToken) return;
 
         if (!played) {

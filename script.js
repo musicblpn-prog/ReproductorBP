@@ -332,7 +332,7 @@ createCollectionBtn.onclick = () => {
     if (!name) return;
 
     createCollection(name);
-    
+
     alert(`Álbum creado: ${name}`);
 
     addTrackToCollection(
@@ -678,7 +678,7 @@ function moveTrackInAlbum(draggedId, targetId) {
     const [movedTrack] =
         albumTracks.splice(fromIndex, 1);
 
-    albumTracks.splice(toIndex + 1, 0, movedTrack);
+    albumTracks.splice(toIndex, 0, movedTrack);
 
     saveLibrary();
 
@@ -705,9 +705,9 @@ function moveTrackInCustomQueue(
         customQueue.splice(fromIndex, 1);
 
     customQueue.splice(
-        toIndex + 1,
-        0,
-        movedTrack
+    toIndex,
+    0,
+    movedTrack
     );
     saveCustomQueue();
 
@@ -3086,6 +3086,40 @@ if (navCollections) {
         render();
     };
 }
+
+// =====================================================
+// play/pausa con tecla space
+// =====================================================
+
+document.addEventListener("keydown", async (e) => {
+
+    // evitar escribir en inputs
+    const tag =
+        document.activeElement?.tagName;
+
+    if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA"
+    ) return;
+
+    // tecla SPACE
+    if (e.code === "Space") {
+
+        e.preventDefault();
+
+        if (audio.src && !audio.paused) {
+
+            pause(true);
+
+        } else {
+
+            await resume();
+
+        }
+
+    }
+
+});
 
 
 // =====================================================

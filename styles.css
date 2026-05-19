@@ -42,7 +42,9 @@ body{
 
 .app{
   min-height:100vh;
-  padding-bottom:110px;
+
+  padding-bottom:
+    calc(220px + env(safe-area-inset-bottom));
 }
 
 .hidden{

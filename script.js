@@ -1308,10 +1308,15 @@ listEl.appendChild(div);
             tracks = tracks.filter(track => matchTrack(track, q));
         }
 
-        tracks.sort((a, b) =>
+        // SOLO ordenar fuera de álbum específico
+        if (!(selectedGenre && selectedAlbum && !q)) {
+
+            tracks.sort((a, b) =>
             (a.artist + a.album + a.title)
                 .localeCompare(b.artist + b.album + b.title)
-        );
+            );
+
+}
 
         
 

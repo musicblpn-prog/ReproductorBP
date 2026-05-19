@@ -722,11 +722,12 @@ function addTrackToCustomQueue(track) {
     if (!track?.id) return;
 
     const alreadyExists =
-        customQueue.some(
-            t => t.id === track.id
-        );
+        customQueue.some(t => t.id === track.id);
 
-    if (alreadyExists) return;
+    if (alreadyExists) {
+        alert("Esta canción ya está en la cola");
+        return;
+    }
 
     customQueue.push(track);
 
@@ -734,11 +735,9 @@ function addTrackToCustomQueue(track) {
 
     alert(`Añadido a cola: ${track.title}`);
 
-    // IMPORTANTE:
-    // NO activar automáticamente la cola
-    // SOLO almacenar canciones
-
-    render();
+    if (view === "queue") {
+        render();
+    }
 
 }
 
@@ -1483,13 +1482,19 @@ dayBtn.onclick = (e) => {
     };
 
 
-    div.querySelector(".queue-btn").onclick = (e) => {
+    const queueBtn = div.querySelector(".queue-btn");
 
-    e.stopPropagation();
+    if (queueBtn) {
 
-    addTrackToCustomQueue(track);
-  
+    queueBtn.onclick = (e) => {
+
+        e.stopPropagation();
+
+        addTrackToCustomQueue(track);
+
     };
+
+    }
 
     const removeQueueBtn =
     div.querySelector(".remove-queue-btn");

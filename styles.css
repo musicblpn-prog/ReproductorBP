@@ -1280,7 +1280,26 @@ input{
   outline:none;
 }
 .small{ color: var(--muted); opacity:.9; }
-.form-actions{ display:flex; gap: 10px; margin-top: 6px; }
+.form-actions{
+
+  display:flex;
+
+  justify-content:center;
+
+  gap:16px;
+
+  margin-top:24px;
+
+  padding-top:12px;
+
+}
+
+.form-actions button{
+
+  min-width:120px;
+
+}
+
 .msg{
   border:1px solid rgba(255,45,85,.35);
   background: rgba(255,45,85,.12);

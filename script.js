@@ -306,11 +306,13 @@ function renderCollectionModal() {
                 collectionTrackTemp.id
             );
 
+            alert(`Guardado en "${name}"`);
+
             collectionModal.classList.add(
-                "modal-hidden"
+            "modal-hidden"
             );
 
-            render();
+             render();
 
         };
 
@@ -330,6 +332,8 @@ createCollectionBtn.onclick = () => {
     if (!name) return;
 
     createCollection(name);
+    
+    alert(`Álbum creado: ${name}`);
 
     addTrackToCollection(
         name,

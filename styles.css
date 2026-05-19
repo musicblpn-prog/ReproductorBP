@@ -175,15 +175,27 @@ body{
 
   border:1px solid var(--line);
 
-  background:rgba(255,255,255,.04);
+  background:rgba(255,255,255,.05);
 
-  color:var(--muted);
+  color:var(--text);
 
-  padding:10px;
+  padding:10px 14px;
 
   border-radius:14px;
 
   cursor:pointer;
+
+  transition:.2s ease;
+
+  backdrop-filter:blur(10px);
+
+}
+
+.nav-btn:hover{
+
+  background:rgba(255,255,255,.10);
+
+  transform:scale(1.02);
 
 }
 
@@ -193,29 +205,10 @@ body{
 
   border-color:rgba(90,200,250,.38);
 
-  background:rgba(90,200,250,.12);
+  background:rgba(90,200,250,.18);
 
-}
-
-.nav-btn {
-
-    background: var(--card);
-    border: 1px solid var(--border);
-    color: var(--text);
-
-    border-radius: 12px;
-
-    padding: 10px 14px;
-
-    cursor: pointer;
-
-    transition: 0.2s ease;
-
-}
-
-.nav-btn:hover {
-
-    transform: scale(1.03);
+  box-shadow:
+    0 0 18px rgba(90,200,250,.12);
 
 }
 

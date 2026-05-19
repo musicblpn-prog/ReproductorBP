@@ -1911,11 +1911,10 @@ function syncPlayPauseButtons() {
 
     isPlaying = playing;
 
-    if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
-    if (playFull) playFull.textContent = playing ? "⏸" : "▶";
+    if (playBtn) playBtn.textContent = playing ? "❚❚" : "▶";
+    if (playFull) playFull.textContent = playing ? "❚❚" : "▶";
 
      
-
 }
 
 
@@ -1943,12 +1942,12 @@ function syncRepeatButtons() {
 
     if (repeatFull) {
         repeatFull.classList.toggle("active", isActive);
-        repeatFull.textContent = repeatMode === "one" ? "🔂" : "🔁";
+        repeatFull.textContent = repeatMode === "one" ? "↻¹" : "↻";
     }
 
     if (repeatBtn) {
         repeatBtn.classList.toggle("active", isActive);
-        repeatBtn.textContent = repeatMode === "one" ? "🔂" : "🔁";
+        repeatBtn.textContent = repeatMode === "one" ? "↻¹" : "↻";
     }
 }
 
@@ -2283,7 +2282,7 @@ async function safePlayAudio() {
         if (audio.paused) return false;
 
         syncPlayPauseButtons();
-        syncMediaSessionState("playing");
+        syncMediaSessionState();
 
         if ("mediaSession" in navigator) {
             navigator.mediaSession.playbackState = "playing";

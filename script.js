@@ -1980,6 +1980,7 @@ let wasPlayingBeforeHide = false;
 let userPaused = false;
 let lastAudioCheck = 0;
 let lastTrackChange = 0;
+let shouldKeepPlaying = false;
 
 
 // =====================================================
@@ -2381,9 +2382,13 @@ async function recoverPlaybackIfNeeded() {
 
     if (recoveringAudio) return false;
     // evitar recover durante estabilización del cambio
-if (Date.now() - lastTrackChange < 4000) {
+if (
+    Date.now() - lastTrackChange < 1200 &&
+    !shouldKeepPlaying
+) {
     return false;
 }
+
     if (isSwitchingTrack) return false;
     if (!audio.src) return false;
     if (userPaused) return false;
@@ -2434,7 +2439,7 @@ async function playFromQueue(index) {
 
     const token = ++currentTrackToken;
     userPaused = false;
-
+    shouldKeepPlaying = true;
     currentIndex = index;
     lastTrackChange = Date.now();
 
@@ -2499,16 +2504,18 @@ function pause(userInitiated = false) {
     }
 
     if (userInitiated) {
-        wasPlayingBeforeHide = false;
-        userPaused = true;
+    wasPlayingBeforeHide = false;
+    userPaused = true;
+    shouldKeepPlaying = false;
     }
+
 }
 
 
 async function resume() {
 
     userPaused = false;
-
+    shouldKeepPlaying = true;
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
         setAudioSource(queue[currentIndex]);
     }
@@ -2819,6 +2826,46 @@ audio.addEventListener("pause", () => {
 
 });
 
+async function playFromQueueWithRetry(index, attempts = 3) {
+
+    for (let i = 0; i < attempts; i++) {
+
+        await playFromQueue(index);
+
+        await new Promise(r =>
+            setTimeout(r, 700 + i * 500)
+        );
+
+        if (
+            shouldKeepPlaying &&
+            !audio.paused &&
+            !audio.ended
+        ) {
+            return true;
+        }
+
+        if (
+            shouldKeepPlaying &&
+            currentIndex >= 0 &&
+            queue[currentIndex]
+        ) {
+            try {
+                const track = queue[currentIndex];
+
+                audio.src = fixDropbox(track.url);
+                audio.load();
+
+                await safePlayAudio();
+            } catch {}
+        }
+
+    }
+
+    return !audio.paused;
+
+}
+
+
 
 audio.addEventListener("ended", async () => {
 
@@ -2859,10 +2906,12 @@ audio.addEventListener("ended", async () => {
     }
 
 
-    await playFromQueue(nextIndex);
+    shouldKeepPlaying = true;
 
+    await playFromQueueWithRetry(nextIndex, 3);
+  
 
-    // ✅ solo una vez
+      //  solo una vez
     syncPlayPauseButtons();
     syncMediaSessionState();
 
@@ -3023,7 +3072,12 @@ setInterval(async () => {
 
     lastAudioCheck = now;
 
-    if (audio.paused && !audio.ended && !userPaused) {
+    if (
+    shouldKeepPlaying &&
+    audio.paused &&
+    !audio.ended &&
+    !userPaused
+) {
 
         await recoverPlaybackIfNeeded();
 

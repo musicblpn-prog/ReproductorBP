@@ -129,9 +129,11 @@ const repeatBtn = document.getElementById("repeatBtn");
 
 
 // PRELOAD AUDIO
-
-const audioPreload = new Audio();
-audioPreload.preload = "auto";
+// Android puede suspender o disputar el audio focus cuando existen dos
+// elementos de audio activos. En Android conservamos un solo reproductor.
+const isAndroidDevice = /Android/i.test(navigator.userAgent);
+const audioPreload = isAndroidDevice ? null : new Audio();
+if (audioPreload) audioPreload.preload = "metadata";
 
 
 // =====================================================
@@ -2134,6 +2136,11 @@ function preloadSpecificIndex(index) {
     const src = fixDropbox(nextTrack.url);
 
     preloadTrackId = nextTrack.id;
+
+    // En Android no usamos un segundo <audio>; el reproductor principal
+    // mantiene así la sesión multimedia y el audio focus al bloquear pantalla.
+    if (!audioPreload) return;
+
     audioPreload.src = src;
     audioPreload.load();
 }
@@ -2145,8 +2152,10 @@ function preloadUpcomingTrack() {
         preloadSpecificIndex(nextIndex);
     } else {
         preloadTrackId = null;
-        audioPreload.removeAttribute("src");
-        audioPreload.load();
+        if (audioPreload) {
+            audioPreload.removeAttribute("src");
+            audioPreload.load();
+        }
     }
 }
 
@@ -2908,10 +2917,15 @@ audio.addEventListener("ended", async () => {
 
     shouldKeepPlaying = true;
 
-    await playFromQueueWithRetry(nextIndex, 3);
-  
+    // Cambio inmediato usando el mismo elemento de audio. Evitamos depender
+    // primero de temporizadores, que Android puede congelar con la pantalla apagada.
+    await playFromQueue(nextIndex);
 
-      //  solo una vez
+    // Respaldo únicamente si el cambio inmediato falló.
+    if (audio.paused && shouldKeepPlaying && !userPaused) {
+        await playFromQueueWithRetry(nextIndex, 2);
+    }
+
     syncPlayPauseButtons();
     syncMediaSessionState();
 
@@ -3509,19 +3523,5 @@ syncRepeatButtons();
 syncShuffleButtons();
 
 
-// =====================================================
-// Inicializar serviworker
-// =====================================================
-
-if ("serviceWorker" in navigator) {
-
-  window.addEventListener("load", () => {
-
-    navigator.serviceWorker.register("./sw.js")
-      .then(() => console.log("SW registrado"))
-      .catch(err => console.log("SW error:", err));
-
-  });
-
-}
+// El Service Worker se registra una sola vez desde index.html.
 

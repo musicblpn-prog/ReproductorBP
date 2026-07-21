@@ -1,4 +1,4 @@
-const VERSION = "v5";
+const VERSION = "v6-android-audio";
 const CACHE_STATIC = `mi-music-static-${VERSION}`;
 const CACHE_RUNTIME = `mi-music-runtime-${VERSION}`;
 
@@ -154,53 +154,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // MP3 / audio remotos: NO cache agresivo todavía
-if (
-  request.destination === "audio" ||
-  url.pathname.endsWith(".mp3") ||
-  url.pathname.endsWith(".m4a") ||
-  url.pathname.endsWith(".aac")
-) {
-
-  event.respondWith(
-
-    caches.open(CACHE_RUNTIME).then(async (cache) => {
-
-      const cached = await cache.match(request);
-
-      //  si ya está cacheado → respuesta inmediata
-      // intentar red primero para evitar audios corruptos/parciales
-
-      try {
-
-        const response = await fetch(request);
-
-//  SOLO cachear audios válidos de Dropbox
-if (
-  response &&
-  (response.status === 200 || response.status === 206) &&
-  request.url.includes("dropboxusercontent")
-) {
-  cache.put(request, response.clone());
-  limitCacheSize(CACHE_RUNTIME, 50);
-}
-
-return response;
-
-      } catch (err) {
-
-        if (cached) return cached;
-
-        throw err;
-
-      }
-
-    })
-
-  );
-
-  return;
-}
+  // Audio remoto: dejar que el navegador gestione directamente las
+  // solicitudes Range. No guardar respuestas 206 parciales en Cache Storage,
+  // porque una parte del MP3 no representa el archivo completo.
+  if (
+    request.destination === "audio" ||
+    url.pathname.endsWith(".mp3") ||
+    url.pathname.endsWith(".m4a") ||
+    url.pathname.endsWith(".aac")
+  ) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // Default
   event.respondWith(networkFirst(request));

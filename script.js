@@ -129,11 +129,9 @@ const repeatBtn = document.getElementById("repeatBtn");
 
 
 // PRELOAD AUDIO
-// Android puede suspender o disputar el audio focus cuando existen dos
-// elementos de audio activos. En Android conservamos un solo reproductor.
-const isAndroidDevice = /Android/i.test(navigator.userAgent);
-const audioPreload = isAndroidDevice ? null : new Audio();
-if (audioPreload) audioPreload.preload = "metadata";
+
+const audioPreload = new Audio();
+audioPreload.preload = "auto";
 
 
 // =====================================================
@@ -185,6 +183,9 @@ audio.volume = Number(vol.value);
 
 render();
 restorePlayerState();
+
+showConnectionBanner(!navigator.onLine);
+requestWakeLock();
 
 
 // =====================================================
@@ -1697,7 +1698,7 @@ function deleteSong(track) {
     if (currentIndex >= 0 && queue[currentIndex]?.id === track.id) {
         pause();
         currentIndex = -1;
-        audio.src = "";
+        resetAudioElement();
     }
 
     saveLibrary();
@@ -1726,7 +1727,7 @@ function deleteAlbum(genreName, albumName) {
     ) {
         pause();
         currentIndex = -1;
-        audio.src = "";
+        resetAudioElement();
     }
 
     albumTrackIds.forEach(id => favorites.delete(id));
@@ -1976,13 +1977,25 @@ function syncShuffleButtons() {
 let playRequestId = 0;
 let currentTrackToken = 0;
 let recoveringAudio = false;
-let isSwitchingTrack = false;
+let isSwitchingTrack = false; // true mientras playFromQueue() está montando el próximo track
 let preloadTrackId = null;
 let wasPlayingBeforeHide = false;
 let userPaused = false;
 let lastAudioCheck = 0;
 let lastTrackChange = 0;
 let shouldKeepPlaying = false;
+
+// ---- Precarga real (Blob) para transiciones sin depender de la red ----
+let preloadedBlobUrl = null;      // Object URL del siguiente track ya descargado completo
+let preloadedBlobTrackId = null;  // id del track al que pertenece ese blob
+let preloadAbortController = null;
+const AUDIO_PRELOAD_MAX_BYTES = 40 * 1024 * 1024; // no precargar como blob archivos > 40MB
+
+// (el estado de red se consulta directamente vía navigator.onLine
+// y el banner de conexión en el momento que se necesita)
+
+// ---- Wake Lock (evita que la pantalla se apague mientras se navega la app) ----
+let wakeLockRef = null;
 
 
 // =====================================================
@@ -2124,8 +2137,30 @@ function advanceShufflePosToIndex(index) {
 
 
 // =====================================================
-// PRELOAD INTELIGENTE
+// PRELOAD INTELIGENTE (real, con Blob)
 // =====================================================
+//
+// Antes, "precargar" solo asignaba la URL a un <audio> oculto,
+// pero la transición real (playFromQueue) volvía a pedir la
+// URL de red desde cero, así que la precarga no se usaba para
+// nada y cada cambio de canción dependía 100% de la red en ese
+// instante exacto (el peor momento posible: justo cuando el
+// teléfono puede estar bloqueado o con señal débil).
+//
+// Ahora se descarga el archivo COMPLETO del próximo track como
+// Blob mientras suena el actual. Al llegar el turno de esa
+// canción, si el blob ya está listo se usa directo (arranque
+// instantáneo, sin red) y si no, se recurre a la URL remota
+// normal (que el Service Worker puede además servir desde su
+// propia caché si no hay conexión).
+
+function revokePreloadedBlob() {
+    if (preloadedBlobUrl) {
+        try { URL.revokeObjectURL(preloadedBlobUrl); } catch {}
+    }
+    preloadedBlobUrl = null;
+    preloadedBlobTrackId = null;
+}
 
 function preloadSpecificIndex(index) {
     if (index < 0 || index >= queue.length) return;
@@ -2133,16 +2168,64 @@ function preloadSpecificIndex(index) {
     const nextTrack = queue[index];
     if (!nextTrack?.url) return;
 
-    const src = fixDropbox(nextTrack.url);
+    // Ya está precargado este mismo track: no repetir trabajo.
+    if (preloadedBlobTrackId === nextTrack.id && preloadedBlobUrl) return;
+    if (preloadTrackId === nextTrack.id && preloadAbortController) return;
 
+    // Cancelar cualquier precarga anterior en curso.
+    if (preloadAbortController) {
+        try { preloadAbortController.abort(); } catch {}
+    }
+    revokePreloadedBlob();
+
+    const src = fixDropbox(nextTrack.url);
     preloadTrackId = nextTrack.id;
 
-    // En Android no usamos un segundo <audio>; el reproductor principal
-    // mantiene así la sesión multimedia y el audio focus al bloquear pantalla.
-    if (!audioPreload) return;
+    // Calentar también el <audio> oculto (ayuda a Safari/iOS a
+    // resolver DNS/TLS antes de necesitarlo).
+    try {
+        audioPreload.src = src;
+        audioPreload.load();
+    } catch {}
 
-    audioPreload.src = src;
-    audioPreload.load();
+    // No intentar Blob si no hay conexión: se usará la URL
+    // remota normal (con caché del SW) cuando toque.
+    if (!navigator.onLine) return;
+
+    const controller = new AbortController();
+    preloadAbortController = controller;
+
+    fetch(src, { signal: controller.signal })
+        .then(async (res) => {
+            if (!res.ok) throw new Error("preload http " + res.status);
+
+            const lenHeader = res.headers.get("content-length");
+            const len = lenHeader ? parseInt(lenHeader, 10) : 0;
+
+            if (len && len > AUDIO_PRELOAD_MAX_BYTES) {
+                // Archivo muy pesado: no lo guardamos en memoria,
+                // dejamos que se reproduzca por streaming normal.
+                return;
+            }
+
+            const blob = await res.blob();
+
+            // Si mientras tanto cambió el track a precargar, descartar.
+            if (preloadTrackId !== nextTrack.id) return;
+
+            revokePreloadedBlob();
+            preloadedBlobUrl = URL.createObjectURL(blob);
+            preloadedBlobTrackId = nextTrack.id;
+        })
+        .catch(() => {
+            // Falló la precarga (sin red, CORS, abortada, etc.):
+            // no pasa nada, se reproducirá por streaming normal.
+        })
+        .finally(() => {
+            if (preloadAbortController === controller) {
+                preloadAbortController = null;
+            }
+        });
 }
 
 function preloadUpcomingTrack() {
@@ -2152,11 +2235,62 @@ function preloadUpcomingTrack() {
         preloadSpecificIndex(nextIndex);
     } else {
         preloadTrackId = null;
-        if (audioPreload) {
+        if (preloadAbortController) {
+            try { preloadAbortController.abort(); } catch {}
+            preloadAbortController = null;
+        }
+        revokePreloadedBlob();
+        try {
             audioPreload.removeAttribute("src");
             audioPreload.load();
-        }
+        } catch {}
     }
+}
+
+// Blob actualmente asignado al <audio> principal (si aplica).
+let activeBlobUrl = null;
+
+// Calcula la mejor fuente disponible para un track: el Blob ya
+// precargado (instantáneo, funciona offline) o la URL remota.
+function computeSourceForTrack(track) {
+    if (!track) return { src: "", isBlob: false };
+
+    if (preloadedBlobTrackId === track.id && preloadedBlobUrl) {
+        return { src: preloadedBlobUrl, isBlob: true };
+    }
+
+    return { src: fixDropbox(track.url || ""), isBlob: false };
+}
+
+// Asigna la fuente de audio para `track` en el <audio> principal,
+// gestionando correctamente la memoria de los Object URL (Blob)
+// para no dejar fugas y sin revocar uno que esté en uso.
+function assignAudioSource(track, { force = false } = {}) {
+    if (!track) return false;
+
+    const { src, isBlob } = computeSourceForTrack(track);
+    if (!src) return false;
+
+    if (!force && audio.src === src) return true;
+
+    if (activeBlobUrl && activeBlobUrl !== src) {
+        try { URL.revokeObjectURL(activeBlobUrl); } catch {}
+    }
+
+    audio.src = src;
+
+    if (isBlob) {
+        activeBlobUrl = src;
+        // Este blob pasa de "pendiente" a "en uso".
+        if (preloadedBlobTrackId === track.id) {
+            preloadedBlobUrl = null;
+            preloadedBlobTrackId = null;
+        }
+    } else {
+        activeBlobUrl = null;
+    }
+
+    return true;
 }
 
 
@@ -2196,7 +2330,7 @@ function setupMediaSession(track) {
 
             const track = queue[currentIndex];
 
-            audio.src = fixDropbox(track.url);
+            assignAudioSource(track, { force: true });
 
             audio.load();
 
@@ -2265,17 +2399,22 @@ function updatePositionState() {
 // =====================================================
 
 function setAudioSource(track) {
+    return assignAudioSource(track);
+}
 
-    const src = fixDropbox(track.url || "");
-    if (!src) return false;
+// Limpia por completo el elemento <audio> sin usar src="",
+// ya que asignar una cadena vacía hace que algunos navegadores
+// interpreten que se debe cargar la URL de la propia página
+// como si fuera un medio, disparando un evento "error" falso.
+function resetAudioElement() {
+    try {
+        audio.pause();
+    } catch {}
 
-    if (audio.src === src) {
-        return true;
-    }
-
-    audio.src = src;
-
-    return true;
+    try {
+        audio.removeAttribute("src");
+        audio.load();
+    } catch {}
 }
 
 
@@ -2390,28 +2529,39 @@ async function recoverPlaybackIfNeeded() {
     const token = currentTrackToken;
 
     if (recoveringAudio) return false;
-    // evitar recover durante estabilización del cambio
-if (
-    Date.now() - lastTrackChange < 1200 &&
-    !shouldKeepPlaying
-) {
-    return false;
-}
 
+    // Evitar "recuperar" mientras playFromQueue todavía está
+    // montando el track (antes esto se saltaba casi siempre por
+    // un bug, provocando llamadas a play() en carrera con la
+    // propia transición de pista).
     if (isSwitchingTrack) return false;
-    if (!audio.src) return false;
+
+    // Protección anti-carrera: justo después de cambiar de
+    // pista, dejamos que playFromQueue termine su propio flujo
+    // antes de que el watchdog/otros listeners intervengan.
+    if (Date.now() - lastTrackChange < 1200) return false;
+
+    if (!audio.src && !activeBlobUrl) return false;
     if (userPaused) return false;
     if (!audio.paused) return true;
     if (currentIndex < 0 || !queue[currentIndex]) return false;
+    if (!shouldKeepPlaying) return false;
+
+    // Sin conexión: no tiene sentido insistir con play() contra
+    // una URL remota que va a fallar. Cuando vuelva la señal, el
+    // listener de "online" dispara la recuperación real.
+    if (!navigator.onLine && !audio.src.startsWith("blob:")) {
+        return false;
+    }
 
     recoveringAudio = true;
 
     try {
         const track = queue[currentIndex];
-        const expectedSrc = fixDropbox(track.url);
+        const { src: expectedSrc } = computeSourceForTrack(track);
 
-        if (!audio.src.includes(expectedSrc.split("/").pop()?.split("?")[0] || "")) {
-            audio.src = expectedSrc;
+        if (expectedSrc && audio.src !== expectedSrc) {
+            assignAudioSource(track, { force: true });
             audio.load();
         }
 
@@ -2451,43 +2601,56 @@ async function playFromQueue(index) {
     shouldKeepPlaying = true;
     currentIndex = index;
     lastTrackChange = Date.now();
+    isSwitchingTrack = true;
 
-    const track = queue[currentIndex];
-    if (!track || !track.url) return;
+    try {
 
-    if (isShuffle) {
-        advanceShufflePosToIndex(index);
-    }
+        const track = queue[currentIndex];
+        if (!track || !track.url) return;
 
-    updateNowPlayingUI(track);
-    vibrateShort();
-    setupMediaSession(track);
+        if (isShuffle) {
+            advanceShufflePosToIndex(index);
+        }
 
-    setAudioSource(track);
-    audio.load();
+        updateNowPlayingUI(track);
+        vibrateShort();
+        setupMediaSession(track);
 
-    if (token !== currentTrackToken) return;
+        assignAudioSource(track, { force: true });
+        audio.load();
 
-    preloadUpcomingTrack();
+        if (token !== currentTrackToken) return;
 
-    let played = await forceResumePlayback();
+        preloadUpcomingTrack();
 
-    if (token !== currentTrackToken) return;
+        let played = await forceResumePlayback();
 
-    if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex]) {
-        try {
-            audio.src = fixDropbox(queue[currentIndex].url);
-            played = await safePlayAudio();
-        } catch {}
-    }
+        if (token !== currentTrackToken) return;
 
-    syncPlayPauseButtons();
-    syncMediaSessionState();
+        if (!played && audio.paused && currentIndex >= 0 && queue[currentIndex]) {
+            try {
+                assignAudioSource(queue[currentIndex], { force: true });
+                played = await safePlayAudio();
+            } catch {}
+        }
 
-    if (token !== currentTrackToken) return;
+        syncPlayPauseButtons();
+        syncMediaSessionState();
 
-    if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "playing";
+        if (token !== currentTrackToken) return;
+
+        if ("mediaSession" in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+        }
+
+        if (played) requestWakeLock();
+
+    } finally {
+        // Pequeño margen antes de permitir que watchdog/otros
+        // listeners intervengan, para no chocar con este flujo.
+        setTimeout(() => {
+            if (token === currentTrackToken) isSwitchingTrack = false;
+        }, 400);
     }
 
     savePlayerState();
@@ -2516,6 +2679,7 @@ function pause(userInitiated = false) {
     wasPlayingBeforeHide = false;
     userPaused = true;
     shouldKeepPlaying = false;
+    releaseWakeLock();
     }
 
 }
@@ -2525,8 +2689,9 @@ async function resume() {
 
     userPaused = false;
     shouldKeepPlaying = true;
+
     if (!audio.src && currentIndex >= 0 && queue[currentIndex]) {
-        setAudioSource(queue[currentIndex]);
+        assignAudioSource(queue[currentIndex]);
     }
 
     let ok = await forceResumePlayback();
@@ -2535,7 +2700,7 @@ async function resume() {
 
         const track = queue[currentIndex];
 
-        audio.src = fixDropbox(track.url);
+        assignAudioSource(track, { force: true });
 
         ok = await safePlayAudio();
     }
@@ -2557,7 +2722,7 @@ if (!ok && currentIndex >= 0 && queue[currentIndex]) {
 
         const track = queue[currentIndex];
 
-        audio.src = fixDropbox(track.url);
+        assignAudioSource(track, { force: true });
 
         audio.load();
 
@@ -2569,6 +2734,8 @@ if (!ok && currentIndex >= 0 && queue[currentIndex]) {
 //
 
     isPlaying = ok;
+
+    if (ok) requestWakeLock();
 
     syncPlayPauseButtons();
     syncMediaSessionState();
@@ -2853,6 +3020,13 @@ async function playFromQueueWithRetry(index, attempts = 3) {
             return true;
         }
 
+        // Sin conexión: no insistir a lo loco, esperar a que
+        // vuelva la señal (el listener "online" retomará solo).
+        if (!navigator.onLine) {
+            showConnectionBanner(true);
+            return false;
+        }
+
         if (
             shouldKeepPlaying &&
             currentIndex >= 0 &&
@@ -2861,7 +3035,7 @@ async function playFromQueueWithRetry(index, attempts = 3) {
             try {
                 const track = queue[currentIndex];
 
-                audio.src = fixDropbox(track.url);
+                assignAudioSource(track, { force: true });
                 audio.load();
 
                 await safePlayAudio();
@@ -2876,15 +3050,21 @@ async function playFromQueueWithRetry(index, attempts = 3) {
 
 
 
-audio.addEventListener("ended", async () => {
+// Si la canción termina y no hay conexión, no tiene sentido
+// insistir con nuevas peticiones de red: se guarda el índice
+// pendiente y se retoma automáticamente en cuanto vuelva la
+// señal (ver listener de "online" más abajo).
+let pendingAdvanceIndex = -1;
 
-    
+audio.addEventListener("ended", async () => {
 
     if (!queue.length) return;
 
 
     if (repeatMode === "one") {
 
+        // Si el track ya quedó precargado como Blob, esto es
+        // instantáneo incluso sin red.
         await playFromQueue(currentIndex);
 
         syncMediaSessionState();
@@ -2917,29 +3097,56 @@ audio.addEventListener("ended", async () => {
 
     shouldKeepPlaying = true;
 
-    // Cambio inmediato usando el mismo elemento de audio. Evitamos depender
-    // primero de temporizadores, que Android puede congelar con la pantalla apagada.
-    await playFromQueue(nextIndex);
+    const nextTrack = queue[nextIndex];
+    const nextIsPreloaded = preloadedBlobTrackId === nextTrack?.id;
 
-    // Respaldo únicamente si el cambio inmediato falló.
-    if (audio.paused && shouldKeepPlaying && !userPaused) {
-        await playFromQueueWithRetry(nextIndex, 2);
+    if (!navigator.onLine && !nextIsPreloaded) {
+        // Sin red y sin la próxima canción ya en memoria: no
+        // podemos continuar todavía. Guardamos la intención y
+        // esperamos a que vuelva la conexión.
+        pendingAdvanceIndex = nextIndex;
+        showConnectionBanner(true);
+        syncMediaSessionState();
+        return;
     }
 
+    await playFromQueueWithRetry(nextIndex, 3);
+
+
+      //  solo una vez
     syncPlayPauseButtons();
     syncMediaSessionState();
 
 });
 
 
+let audioErrorRetries = 0;
+
 audio.addEventListener("error", async () => {
     console.log("Error al cargar audio");
+
+    if (!navigator.onLine) {
+        // Sin conexión: no reintentar contra la red en bucle,
+        // solo avisar y esperar a que vuelva la señal.
+        showConnectionBanner(true);
+        return;
+    }
+
+    audioErrorRetries++;
+
+    if (audioErrorRetries > 4) {
+        // Demasiados intentos seguidos: nos rendimos por ahora,
+        // el watchdog seguirá intentando cada 2s sin martillar
+        // la red sin parar.
+        audioErrorRetries = 0;
+        return;
+    }
 
     setTimeout(async () => {
         if (currentIndex >= 0 && queue[currentIndex]) {
             await playFromQueue(currentIndex);
         }
-    }, 500);
+    }, 500 * audioErrorRetries);
 });
 
 
@@ -2970,32 +3177,107 @@ audio.addEventListener("waiting", async () => {
 
 
 // =====================================================
+// BANNER DE CONEXIÓN (UI)
+// =====================================================
+
+let connectionBannerEl = null;
+
+function getConnectionBannerEl() {
+    if (connectionBannerEl) return connectionBannerEl;
+
+    connectionBannerEl = document.getElementById("connectionBanner");
+    return connectionBannerEl;
+}
+
+function showConnectionBanner(show) {
+    const el = getConnectionBannerEl();
+    if (!el) return;
+
+    el.classList.toggle("visible", !!show);
+}
+
+// =====================================================
+// WAKE LOCK (mantiene la pantalla activa mientras se navega
+// con la app en primer plano; se libera solo cuando el
+// documento pasa a segundo plano, por spec del navegador —
+// no evita que Android suspenda la pestaña, pero reduce que
+// la pantalla se apague justo cuando el usuario está usando
+// la app, y se vuelve a pedir automáticamente al recuperar
+// el foco)
+// =====================================================
+
+async function requestWakeLock() {
+    if (!("wakeLock" in navigator)) return;
+    if (document.hidden) return;
+    if (wakeLockRef) return;
+
+    try {
+        wakeLockRef = await navigator.wakeLock.request("screen");
+
+        wakeLockRef.addEventListener("release", () => {
+            wakeLockRef = null;
+        });
+    } catch {
+        wakeLockRef = null;
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLockRef) {
+        try { wakeLockRef.release(); } catch {}
+        wakeLockRef = null;
+    }
+}
+
+// =====================================================
 // VISIBILITY / INTERRUPCIONES DE OTRAS APPS
 // =====================================================
+//
+// Antes había 6 listeners distintos (visibilitychange, online,
+// connectionchange, pageshow, pagehide, blur, focus) cada uno
+// llamando por su cuenta a recoverPlaybackIfNeeded(), lo que
+// generaba llamadas concurrentes innecesarias. recoverPlaybackIfNeeded
+// ya es seguro para llamadas concurrentes (usa el flag
+// `recoveringAudio`), pero igual se simplifica la intención de
+// cada evento para que sea más fácil de mantener.
+
+async function reconcilePlaybackAfterInterruption(reason) {
+    if (userPaused) return;
+    if (!wasPlayingBeforeHide) return;
+
+    await recoverPlaybackIfNeeded();
+}
 
 document.addEventListener("visibilitychange", async () => {
 
     if (document.hidden) {
-
         wasPlayingBeforeHide = !audio.paused;
+        releaseWakeLock();
         return;
-
     }
 
-    if (userPaused) return;
-
-    if (wasPlayingBeforeHide) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
+    await requestWakeLock();
+    await reconcilePlaybackAfterInterruption("visibilitychange");
 
 });
 
 
 window.addEventListener("online", async () => {
 
+    showConnectionBanner(false);
+
     if (userPaused) return;
+
+    // Si nos quedamos esperando para avanzar de canción por
+    // falta de señal, retomamos la cola justo donde quedó.
+    if (pendingAdvanceIndex >= 0) {
+        const idx = pendingAdvanceIndex;
+        pendingAdvanceIndex = -1;
+        await playFromQueueWithRetry(idx, 3);
+        syncPlayPauseButtons();
+        syncMediaSessionState();
+        return;
+    }
 
     if (currentIndex < 0) return;
 
@@ -3003,12 +3285,9 @@ window.addEventListener("online", async () => {
 
 });
 
-window.addEventListener("connectionchange", async () => {
-
-    if (userPaused) return;
-
-    await recoverPlaybackIfNeeded();
-
+window.addEventListener("offline", () => {
+    wasPlayingBeforeHide = !audio.paused;
+    showConnectionBanner(true);
 });
 
 
@@ -3018,84 +3297,62 @@ window.addEventListener("connectionchange", async () => {
 
 // cuando la página vuelve desde background
 window.addEventListener("pageshow", async () => {
-
-    if (userPaused) return;
-
-    if (wasPlayingBeforeHide) {
-
-        await recoverPlaybackIfNeeded();
-
-    }
-
+    await requestWakeLock();
+    await reconcilePlaybackAfterInterruption("pageshow");
 });
 
 
 // cuando iOS congela la página
 window.addEventListener("pagehide", () => {
-
     wasPlayingBeforeHide = !audio.paused;
-
+    releaseWakeLock();
 });
 
 
 // cuando vuelve el foco real (Safari / PWA)
 window.addEventListener("blur", () => {
-
     wasPlayingBeforeHide = !audio.paused;
-
 });
 
-
-// cuando cambia conexión (muy importante en iPhone)
-window.addEventListener("offline", () => {
-
-    wasPlayingBeforeHide = !audio.paused;
-
-});
 
 window.addEventListener("focus", async () => {
+    await requestWakeLock();
 
     if (userPaused) return;
 
     if (wasPlayingBeforeHide && audio.paused) {
-
         await recoverPlaybackIfNeeded();
-
     }
-
 });
 
-
-//
 
 // =====================================================
 // AUDIO WATCHDOG (estabilidad iPhone / Safari / PWA)
 // =====================================================
+//
+// Última red de seguridad: revisa cada 2s si "debería estar
+// sonando" pero no está, e intenta recuperar. No hace nada
+// mientras no hay conexión (evita reintentos inútiles) salvo
+// que ya tengamos el siguiente track precargado como Blob.
 
 setInterval(async () => {
 
     if (userPaused) return;
-
-    if (!audio.src) return;
-
-    if (document.hidden && !wasPlayingBeforeHide) return;
+    if (!audio.src && !activeBlobUrl) return;
+    if (!shouldKeepPlaying) return;
 
     const now = Date.now();
-
     if (now - lastAudioCheck < 2000) return;
-
     lastAudioCheck = now;
 
-    if (
-    shouldKeepPlaying &&
-    audio.paused &&
-    !audio.ended &&
-    !userPaused
-) {
+    if (!audio.paused || audio.ended) return;
 
-        await recoverPlaybackIfNeeded();
-
+    if (!navigator.onLine && !audio.src?.startsWith("blob:")) {
+        showConnectionBanner(true);
+        return;
     }
+
+    await recoverPlaybackIfNeeded();
 
 }, 2000);
 
@@ -3523,5 +3780,18 @@ syncRepeatButtons();
 syncShuffleButtons();
 
 
-// El Service Worker se registra una sola vez desde index.html.
+// =====================================================
+// Service Worker
+// (El registro real vive en index.html apuntando a
+// "./service-worker.js". Aquí solo escuchamos actualizaciones
+// para poder avisar/activar la nueva versión sin conflictos.)
+// =====================================================
+
+if ("serviceWorker" in navigator) {
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    console.log("Service Worker actualizado");
+  });
+
+}
 

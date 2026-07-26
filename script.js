@@ -126,6 +126,9 @@ const addToCollectionBtn =
 const shuffleBtn = document.getElementById("shuffleBtn");
 const repeatBtn = document.getElementById("repeatBtn");
 
+// Se declara antes de la inicialización porque showConnectionBanner()
+// se ejecuta al cargar la aplicación.
+let connectionBannerEl = null;
 
 
 // PRELOAD AUDIO
@@ -3179,8 +3182,6 @@ audio.addEventListener("waiting", async () => {
 // =====================================================
 // BANNER DE CONEXIÓN (UI)
 // =====================================================
-
-let connectionBannerEl = null;
 
 function getConnectionBannerEl() {
     if (connectionBannerEl) return connectionBannerEl;
